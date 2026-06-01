@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+*.log
+
+# Dados locais e tokens de desenvolvimento
+outputs/personapulse-api/data/
+
+# Arquivos temporarios de construcao local
+work/

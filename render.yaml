@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: personapulse-api
+    runtime: python
+    plan: free
+    rootDir: outputs/personapulse-api
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    healthCheckPath: /health
+    autoDeploy: true
