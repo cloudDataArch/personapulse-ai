@@ -1,5 +1,7 @@
 import json
 import os
+import html
+import urllib.error
 import urllib.request
 import uuid
 from datetime import datetime, timezone
@@ -117,6 +119,43 @@ def http_post_form_json(url, payload):
     request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"}, method="POST")
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def oauth_error_html(title, detail):
+    safe_title = html.escape(str(title))
+    safe_detail = html.escape(str(detail))
+    return f"""
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{safe_title}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; background:#f6f8fb; color:#07142f; padding:40px; }}
+    main {{ max-width:720px; margin:auto; background:white; border:1px solid #d8e0ee; border-radius:12px; padding:28px; }}
+    h1 {{ margin-top:0; }}
+    pre {{ white-space:pre-wrap; background:#111827; color:#f8fafc; padding:16px; border-radius:8px; }}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>{safe_title}</h1>
+    <p>O PersonaPulse recebeu o retorno do provedor, mas não conseguiu concluir a autorização.</p>
+    <pre>{safe_detail}</pre>
+    <p>Volte ao PersonaPulse, revise as credenciais e abra o OAuth novamente.</p>
+  </main>
+</body>
+</html>
+"""
+
+
+def readable_http_error(exc):
+    try:
+        body = exc.read().decode("utf-8")
+    except Exception:
+        body = ""
+    return f"HTTP {getattr(exc, 'code', '')} {getattr(exc, 'reason', '')}\n{body}".strip()
 
 
 def as_bool(value):
@@ -583,23 +622,34 @@ class Handler(BaseHTTPRequestHandler):
             config = store["connector_configs"].get(source, {})
             if not code or not source or state != config.get("oauth_state"):
                 return self.send_html("<h1>OAuth inválido</h1><p>State ou code ausente.</p>")
-            if source == "meta":
-                token_payload = http_get_json(CONNECTOR_PROVIDERS[source]["token_url"], {
+            try:
+                if source == "meta":
+                    token_payload = http_get_json(CONNECTOR_PROVIDERS[source]["token_url"], {
                     "client_id": config["client_id"],
                     "redirect_uri": config["redirect_uri"],
                     "client_secret": config["client_secret"],
                     "code": code,
                 })
-            elif source == "google":
-                token_payload = http_post_form_json(CONNECTOR_PROVIDERS[source]["token_url"], {
+                elif source == "google":
+                    token_payload = http_post_form_json(CONNECTOR_PROVIDERS[source]["token_url"], {
                     "client_id": config["client_id"],
                     "redirect_uri": config["redirect_uri"],
                     "client_secret": config["client_secret"],
                     "code": code,
                     "grant_type": "authorization_code",
                 })
-            else:
-                return self.send_html("<h1>OAuth recebido</h1><p>Conector ainda não implementado.</p>")
+                else:
+                    return self.send_html("<h1>OAuth recebido</h1><p>Conector ainda não implementado.</p>")
+            except urllib.error.HTTPError as exc:
+                detail = readable_http_error(exc)
+                add_audit(store, "connector_oauth_error", {"source": source, "detail": detail})
+                save_store(store)
+                return self.send_html(oauth_error_html("OAuth nao concluido", detail))
+            except Exception as exc:
+                detail = str(exc)
+                add_audit(store, "connector_oauth_error", {"source": source, "detail": detail})
+                save_store(store)
+                return self.send_html(oauth_error_html("OAuth nao concluido", detail))
             config["access_token"] = token_payload.get("access_token")
             if token_payload.get("refresh_token"):
                 config["refresh_token"] = token_payload.get("refresh_token")
