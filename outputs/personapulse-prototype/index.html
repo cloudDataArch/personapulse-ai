@@ -1279,12 +1279,12 @@
                     <input id="connectorLoginCustomerId" placeholder="Opcional: ID da conta gerente" />
                   </label>
                   <label>URL da API PersonaPulse
-                    <input id="connectorApiBaseUrl" placeholder="Ex: https://personapulse-api.onrender.com" />
+                    <input id="connectorApiBaseUrl" readonly value="https://personapulse-ai.onrender.com" />
                   </label>
                 </div>
                 <div style="height:12px"></div>
                 <div class="integration-meta">
-                  Redirect URI do protótipo: <strong id="connectorRedirectUriText">http://127.0.0.1:8088/api/oauth/callback</strong><br>
+                  Redirect URI do protótipo: <strong id="connectorRedirectUriText">https://personapulse-ai.onrender.com/api/oauth/callback</strong><br>
                   Em produção, tokens e secrets ficam no backend, nunca no navegador.
                 </div>
                 <div id="connectorFeedback" class="notice" style="margin-top:12px"></div>
@@ -1435,7 +1435,7 @@
     const DEFAULT_API_BASE_URL = "https://personapulse-ai.onrender.com";
 
     function apiBaseUrl() {
-      return (localStorage.getItem("personapulse_api_base_url") || DEFAULT_API_BASE_URL).replace(/\/$/, "");
+      return DEFAULT_API_BASE_URL;
     }
 
     function apiUrl(path) {
@@ -1545,7 +1545,7 @@
       { id: "snapchat", name: "Snapchat Ads", status: "Planejado", data: "Campanhas, ad squads, público jovem e stats de mídia", shortName: "Snap", scopes: "Snap OAuth + ad account + marketing stats permissions", docs: "https://developers.snap.com/api/marketing-api/" },
       { id: "amazon", name: "Amazon Ads", status: "Planejado", data: "Campanhas, ASINs, produtos, vendas atribuídas e ROAS", shortName: "Amazon", scopes: "Amazon Ads OAuth + profile_id + advertiser account", docs: "https://advertising.amazon.com/API" },
       { id: "mercadolivre", name: "Mercado Livre Ads", status: "Planejado", data: "Produtos, anúncios, vendas atribuídas e marketplace", shortName: "Mercado Livre", scopes: "OAuth Mercado Livre + seller/account + advertising endpoints", docs: "https://developers.mercadolivre.com.br/" },
-      { id: "crm", name: "CRM", status: "Conectado no simulador", data: "Clientes, pedidos, eventos e recomendações de volta", shortName: "CRM", scopes: "API key/webhook do CRM + endpoints de clientes, pedidos e eventos", docs: "http://127.0.0.1:8088/docs" },
+      { id: "crm", name: "CRM", status: "Conectado no simulador", data: "Clientes, pedidos, eventos e recomendações de volta", shortName: "CRM", scopes: "API key/webhook do CRM + endpoints de clientes, pedidos e eventos", docs: "https://personapulse-ai.onrender.com/docs" },
     ];
 
     function iconTag(label, color) {
@@ -2899,20 +2899,15 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
       deleteSelectedDataSource();
     });
     document.getElementById("connectorApiBaseUrl").addEventListener("input", (event) => {
-      const value = event.target.value.trim().replace(/\/$/, "");
-      const preview = value || DEFAULT_API_BASE_URL;
-      document.getElementById("connectorRedirectUriText").textContent = `${preview}/api/oauth/callback`;
+      document.getElementById("connectorRedirectUriText").textContent = oauthRedirectUri();
     });
     document.getElementById("saveConnectorConfig").addEventListener("click", () => {
       const notice = document.getElementById("csvNotice");
       if (!selectedConnectorId) return;
       const feedback = document.getElementById("connectorFeedback");
       const accountId = document.getElementById("connectorAccountId").value.trim();
-      const baseUrlInput = document.getElementById("connectorApiBaseUrl").value.trim().replace(/\/$/, "");
-      if (baseUrlInput) {
-        localStorage.setItem("personapulse_api_base_url", baseUrlInput);
-        document.getElementById("connectorRedirectUriText").textContent = oauthRedirectUri();
-      }
+      document.getElementById("connectorApiBaseUrl").value = apiBaseUrl();
+      document.getElementById("connectorRedirectUriText").textContent = oauthRedirectUri();
       if (selectedConnectorId === "meta" && !/^act_\d+$/.test(accountId)) {
         document.getElementById("connectorStatus").textContent = "Conta de anúncios inválida";
         feedback.innerHTML = `<span><strong>Falta o ID da conta de anúncios.</strong> Esse campo precisa estar no formato act_123456789. O nome do portfólio não funciona aqui.</span>`;
