@@ -1432,7 +1432,7 @@
     let campaignGenerationCount = 0;
     let selectedCampaignId = "general";
     let selectedConnectorId = null;
-    const DEFAULT_API_BASE_URL = "http://127.0.0.1:8088";
+    const DEFAULT_API_BASE_URL = "https://personapulse-ai.onrender.com";
 
     function apiBaseUrl() {
       return (localStorage.getItem("personapulse_api_base_url") || DEFAULT_API_BASE_URL).replace(/\/$/, "");
