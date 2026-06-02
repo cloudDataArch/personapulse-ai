@@ -2949,12 +2949,7 @@
     async function syncExternalAdsSource(sourceId) {
       const source = integrationSources.find(item => item.id === sourceId);
       if (!source) return;
-      openConnectorSetup(sourceId);
       const notice = document.getElementById("csvNotice");
-      activateTab("dashboard");
-      notice.querySelector("span").innerHTML = `<strong>${source.name} precisa de credenciais reais.</strong> Configure OAuth, token e conta de anúncios antes de sincronizar dados reais.`;
-      notice.classList.add("visible");
-      return;
       try {
         const [campaignsPayload, insightsPayload, leadsPayload] = await Promise.all([
           fetchCrmJson(`/api/ads/${sourceId}/campaigns`),
@@ -3361,7 +3356,8 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
         }),
       }).then(response => response.json()).then(payload => {
         document.getElementById("connectorStatus").textContent = payload.status === "configured" ? "Configurado" : "Incompleto";
-        feedback.innerHTML = `<span><strong>Configuração salva.</strong> Agora clique em Abrir OAuth para autorizar a Meta. Depois volte e clique em Sincronizar real.</span>`;
+        const source = integrationSources.find(item => item.id === selectedConnectorId);
+        feedback.innerHTML = `<span><strong>Configuração salva.</strong> Agora clique em Abrir OAuth para autorizar ${source ? source.name : "a fonte"}. Depois volte e clique em Sincronizar real.</span>`;
         feedback.classList.add("visible");
         notice.querySelector("span").innerHTML = `<strong>Configuração salva.</strong> Agora abra o OAuth para autorizar a conta antes de sincronizar dados reais.`;
         notice.classList.add("visible");
@@ -3389,14 +3385,15 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
       const notice = document.getElementById("csvNotice");
       fetch(apiUrl(`/api/connectors/${selectedConnectorId}/sync`), { method: "POST" })
         .then(response => response.json())
-        .then(payload => {
+        .then(async payload => {
           if (payload.status === "synced") {
             notice.querySelector("span").innerHTML = `<strong>API real sincronizada.</strong> ${payload.campaigns || 0} campanhas e ${payload.insights || 0} métricas importadas.`;
+            await syncExternalAdsSource(selectedConnectorId);
           } else {
             notice.querySelector("span").innerHTML = `<strong>Sincronização pendente.</strong> ${payload.detail || "Conclua OAuth e permissões antes."}`;
+            notice.classList.add("visible");
+            activateTab("integrations");
           }
-          notice.classList.add("visible");
-          activateTab("dashboard");
         })
         .catch(() => window.alert("Não foi possível sincronizar. Verifique credenciais, OAuth e permissões."));
     });
