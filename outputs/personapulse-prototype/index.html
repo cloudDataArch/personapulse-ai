@@ -146,6 +146,12 @@
       justify-content: space-between;
       gap: 18px;
       margin-bottom: 18px;
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      padding: 10px 0;
+      background: var(--bg);
+      border-bottom: 1px solid transparent;
     }
 
     .title-block h1 {
@@ -1739,16 +1745,18 @@
       const rate = conversionRate(selected.conversions, selected.audience);
       const clickRate = selected.audience ? Math.round((selected.clicks / selected.audience) * 1000) / 10 : 0;
       const costShare = selected.revenue ? Math.round((selected.cost / selected.revenue) * 1000) / 10 : 0;
-      document.getElementById("campaignMetricBars").innerHTML = [
-        ["Taxa de clique", clickRate, "blue"],
-        ["Taxa de conversao", rate, "teal"],
-        ["Custo sobre receita", costShare, "gold"],
-        ["ROAS", roas(selected.revenue, selected.cost), "green"],
-      ].map(([label, value]) => `
+      const roasValue = roas(selected.revenue, selected.cost);
+      const metrics = [
+        { label: "Taxa de clique", value: clickRate, width: clickRate * 4, display: `${clickRate}%` },
+        { label: "Taxa de conversao", value: rate, width: rate * 8, display: `${rate}%` },
+        { label: "Custo sobre receita", value: costShare, width: costShare * 2, display: `${costShare}%` },
+        { label: "ROAS", value: roasValue, width: roasValue * 16, display: `${roasValue}x` },
+      ];
+      document.getElementById("campaignMetricBars").innerHTML = metrics.map(metric => `
         <div class="bar-row">
-          <span>${label}</span>
-          <div class="track"><div class="fill" style="width:${Math.min(100, value * 3)}%"></div></div>
-          <strong>${value}%</strong>
+          <span>${metric.label}</span>
+          <div class="track"><div class="fill" style="width:${Math.min(100, metric.width)}%"></div></div>
+          <strong>${metric.display}</strong>
         </div>
       `).join("");
 
@@ -2079,7 +2087,10 @@
         const clicks = Math.round(safeAudience * (0.12 + index * 0.012));
         const conversions = Math.round(clicks * (0.18 + index * 0.01));
         const revenue = Math.round(conversions * avgTicket);
-        const cost = Math.max(250, Math.round(safeAudience * (1.1 + index * 0.25)));
+        const costRate = Math.min(0.46, 0.28 + index * 0.035);
+        const cost = revenue > 0
+          ? Math.max(500, Math.round(revenue * costRate))
+          : Math.max(250, Math.round(safeAudience * 1.4));
         return { id, name, segment, channel, audience: safeAudience, clicks, conversions, revenue, cost, status };
       }).filter(campaign => campaign.audience > 0);
 
