@@ -1,10 +1,11 @@
 import json
 import os
 import html
+import random
 import urllib.error
 import urllib.request
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -54,6 +55,100 @@ def empty_store():
         "connector_configs": {},
         "recommendations": [],
         "audit_logs": [],
+    }
+
+
+CRM_DEMO_PRODUCTS = [
+    ("Notebook Dell Inspiron", "eletronicos", 5299.90),
+    ("Bicicleta MTB Carbon", "esporte", 14990.00),
+    ("Carro de Bebe Travel System", "bebe", 3890.00),
+    ("Perfume Amadeirado Premium", "beleza", 429.90),
+    ("Smartphone Samsung Galaxy", "eletronicos", 3199.00),
+    ("Cafeteira Espresso Automatica", "casa", 2499.00),
+    ("Relogio Garmin Forerunner", "esporte", 2899.00),
+    ("Bolsa Executiva Couro", "moda", 899.00),
+]
+
+
+def seed_crm_demo(store, reset=False, customer_count=120):
+    if reset:
+        store["customers"] = []
+        store["orders"] = []
+        store["events"] = []
+    if store["customers"] or store["orders"] or store["events"]:
+        return {
+            "status": "preserved",
+            "customers": len(store["customers"]),
+            "orders": len(store["orders"]),
+            "events": len(store["events"]),
+        }
+
+    rng = random.Random(9126)
+    first_names = ["Ana", "Bruno", "Carla", "Diego", "Elaine", "Fabio", "Gabriela", "Henrique", "Isabela", "Joao", "Larissa", "Marcos"]
+    last_names = ["Silva", "Santos", "Oliveira", "Souza", "Lima", "Costa", "Pereira", "Ferreira", "Almeida", "Ribeiro"]
+    cities = ["Sao Paulo", "Rio de Janeiro", "Belo Horizonte", "Curitiba", "Campinas", "Brasilia", "Salvador", "Recife"]
+    sources = ["hubspot", "rd_station", "pipedrive", "salesforce", "crm_demo"]
+    event_types = ["product_view", "cart_add", "checkout_start", "email_click", "ad_click"]
+    channels = ["E-commerce proprio", "Marketplace", "WhatsApp Vendas", "Loja fisica"]
+    today = date.today()
+
+    order_count = 0
+    event_count = 0
+    for index in range(1, customer_count + 1):
+        first = rng.choice(first_names)
+        last = rng.choice(last_names)
+        external_id = f"crm_demo_{index:04d}"
+        customer = {
+            "external_id": external_id,
+            "name": f"{first} {last}",
+            "email": f"{first.lower()}.{last.lower()}.{index}@crm-demo.com",
+            "phone": f"+55119{rng.randint(10000000, 99999999)}",
+            "city": rng.choice(cities),
+            "consent_marketing": rng.random() < 0.9,
+            "source": rng.choice(sources),
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        }
+        store["customers"].append(customer)
+
+        for _ in range(rng.randint(1, 4)):
+            product, category, avg_price = rng.choice(CRM_DEMO_PRODUCTS)
+            order_count += 1
+            value = round(avg_price * rng.uniform(0.84, 1.16), 2)
+            store["orders"].append({
+                "id": str(uuid.uuid4()),
+                "external_customer_id": external_id,
+                "order_id": f"CRM-PED-{order_count:05d}",
+                "product_name": product,
+                "category": category,
+                "store": rng.choice(channels),
+                "value": value,
+                "purchased_at": (today - timedelta(days=rng.randint(0, 180))).isoformat(),
+                "created_at": now_iso(),
+            })
+
+        for _ in range(rng.randint(2, 7)):
+            product, _, _ = rng.choice(CRM_DEMO_PRODUCTS)
+            event_count += 1
+            store["events"].append({
+                "id": str(uuid.uuid4()),
+                "external_customer_id": external_id,
+                "event_type": rng.choice(event_types),
+                "product_name": product,
+                "occurred_at": (datetime.now() - timedelta(hours=rng.randint(0, 720))).isoformat(timespec="seconds"),
+                "created_at": now_iso(),
+            })
+
+    add_audit(store, "crm_demo_seeded", {
+        "customers": len(store["customers"]),
+        "orders": len(store["orders"]),
+        "events": len(store["events"]),
+    })
+    return {
+        "status": "seeded",
+        "customers": len(store["customers"]),
+        "orders": len(store["orders"]),
+        "events": len(store["events"]),
     }
 
 
@@ -703,6 +798,16 @@ class Handler(BaseHTTPRequestHandler):
                 add_audit(store, "crm_event_received", {"event_type": payload.get("event_type"), "customer": payload.get("external_customer_id")})
                 save_store(store)
                 return self.send_json(201, {"status": "created", "event": payload})
+
+            if path == "/api/crm/demo-seed":
+                result = seed_crm_demo(store, reset=as_bool(payload.get("reset", False)))
+                save_store(store)
+                return self.send_json(200, {
+                    **result,
+                    "customers_data": store["customers"],
+                    "orders_data": store["orders"],
+                    "events_data": store["events"],
+                })
 
             if path == "/api/campaigns/generate":
                 campaign = generate_campaign(payload)

@@ -2280,6 +2280,28 @@
       return response.json();
     }
 
+    async function seedCrmDemoIfEmpty(customersPayload, ordersPayload, eventsPayload) {
+      const customers = customersPayload.customers || [];
+      const orders = ordersPayload.orders || [];
+      const events = eventsPayload.events || [];
+      if (customers.length || orders.length || events.length) {
+        return { customersPayload, ordersPayload, eventsPayload, seeded: false };
+      }
+      const response = await fetch(apiUrl("/api/crm/demo-seed"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reset: false }),
+      });
+      if (!response.ok) throw new Error("CRM demo seed falhou");
+      const seeded = await response.json();
+      return {
+        customersPayload: { customers: seeded.customers_data || [], count: seeded.customers || 0 },
+        ordersPayload: { orders: seeded.orders_data || [], count: seeded.orders || 0 },
+        eventsPayload: { events: seeded.events_data || [], count: seeded.events || 0 },
+        seeded: seeded.status === "seeded",
+      };
+    }
+
     function latestOrderForCustomer(orders, externalId) {
       const customerOrders = orders.filter(order => order.external_customer_id === externalId);
       if (!customerOrders.length) return null;
@@ -2419,16 +2441,21 @@
       notice.querySelector("span").innerHTML = `<strong>Sincronizando CRM...</strong> Buscando clientes, pedidos e eventos na API local.`;
       notice.classList.add("visible");
       try {
-        const [customersPayload, ordersPayload, eventsPayload] = await Promise.all([
+        let [customersPayload, ordersPayload, eventsPayload] = await Promise.all([
           fetchCrmJson("/api/crm/customers"),
           fetchCrmJson("/api/crm/orders"),
           fetchCrmJson("/api/crm/events"),
         ]);
+        const crmSeed = await seedCrmDemoIfEmpty(customersPayload, ordersPayload, eventsPayload);
+        customersPayload = crmSeed.customersPayload;
+        ordersPayload = crmSeed.ordersPayload;
+        eventsPayload = crmSeed.eventsPayload;
         crmCustomers = convertCrmToCustomers(customersPayload.customers || [], ordersPayload.orders || [], eventsPayload.events || []);
         const ordersCount = (ordersPayload.orders || []).length;
         const eventsCount = (eventsPayload.events || []).length;
         audit.unshift(["CRM sincronizado", `${crmCustomers.length.toLocaleString("pt-BR")} clientes sincronizados da API. CSV preservado com ${csvCustomers.length.toLocaleString("pt-BR")} clientes.`]);
-        refreshCombinedData(`<strong>CRM sincronizado com sucesso.</strong> ${crmCustomers.length.toLocaleString("pt-BR")} clientes, ${ordersCount.toLocaleString("pt-BR")} pedidos e ${eventsCount.toLocaleString("pt-BR")} eventos vieram da API. Os dados do CSV foram preservados. ${sourceSummary()}.`);
+        const seedText = crmSeed.seeded ? " Uma base CRM de demonstração foi criada porque a API estava vazia." : "";
+        refreshCombinedData(`<strong>CRM sincronizado com sucesso.</strong> ${crmCustomers.length.toLocaleString("pt-BR")} clientes, ${ordersCount.toLocaleString("pt-BR")} pedidos e ${eventsCount.toLocaleString("pt-BR")} eventos vieram da API.${seedText} Os dados do CSV foram preservados. ${sourceSummary()}.`);
       } catch (error) {
         notice.querySelector("span").innerHTML = `<strong>Erro ao sincronizar CRM.</strong> Confirme se a API esta ativa em ${apiBaseUrl()}.`;
         notice.classList.add("visible");
