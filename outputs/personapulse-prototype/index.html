@@ -245,6 +245,73 @@
       background: white;
     }
 
+    .campaign-control-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+      min-height: 178px;
+      background: white;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .campaign-control-card.active {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+    }
+
+    .campaign-control-card.inactive {
+      border-color: #fecaca;
+      background: #fff1f2;
+    }
+
+    .campaign-control-card.selected {
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .16);
+      border-color: #2563eb;
+    }
+
+    .campaign-control-card header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .campaign-control-card h3 {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .campaign-control-card p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .campaign-control-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .campaign-control-card .btn {
+      width: fit-content;
+    }
+
+    .campaign-dashboard-empty {
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      padding: 26px;
+      color: var(--muted);
+      text-align: center;
+      background: #fbfcfe;
+    }
+
     .integration-card header {
       display: flex;
       align-items: flex-start;
@@ -912,6 +979,10 @@
           <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 11v6a2 2 0 0 0 2 2h2"/><path d="M8 11l10-5v12L8 13v-2z"/><path d="M18 9a4 4 0 0 1 0 6"/></svg></span>
           <span>Campanhas</span>
         </button>
+        <button data-tab="activeCampaigns" title="Campanhas ativas">
+          <span class="ico"><svg viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 13v-2z"/><path d="M7 14v4a2 2 0 0 0 2 2h2"/><path d="M17 9a4 4 0 0 1 0 6"/></svg></span>
+          <span>Ativas</span>
+        </button>
         <button data-tab="pricing" title="Pesquisa de preços">
           <span class="ico"><svg viewBox="0 0 24 24"><path d="M20 7H4"/><path d="M14 17H4"/><path d="M18 11H4"/><path d="M10 21H4"/><path d="M18 3l3 3-7 7-4 1 1-4 7-7z"/></svg></span>
           <span>Preços</span>
@@ -1309,6 +1380,38 @@
         </div>
       </section>
 
+      <section id="activeCampaigns" class="section">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Central de campanhas ativas</h2>
+              <span>Ative, desative e acompanhe campanhas em execução</span>
+            </div>
+            <span class="tag blue" id="activeCampaignsTag">0 ativas</span>
+          </div>
+          <div class="panel-body">
+            <div class="integration-grid" id="activeCampaignCards"></div>
+          </div>
+        </article>
+
+        <div style="height:16px"></div>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h2 id="activeCampaignTitle">Dashboard da campanha</h2>
+              <span id="activeCampaignSubtitle">Clique em uma campanha ativa para ver os resultados individuais</span>
+            </div>
+            <button class="btn" id="activeCampaignGeneral">Ver geral</button>
+          </div>
+          <div class="panel-body" id="activeCampaignDashboard">
+            <div class="campaign-dashboard-empty">
+              Nenhuma campanha ativa selecionada. Use os botões acima para ativar uma campanha e abrir seu dashboard.
+            </div>
+          </div>
+        </article>
+      </section>
+
       <section id="pricing" class="section">
         <div class="grid two">
           <article class="panel">
@@ -1546,6 +1649,7 @@
     let campaignGenerationCount = 0;
     let selectedCampaignId = "general";
     let selectedCampaignIds = new Set();
+    let activeCampaignDetailId = null;
     let selectedConnectorId = null;
     const DEFAULT_API_BASE_URL = "https://personapulse-ai.onrender.com";
 
@@ -1792,6 +1896,19 @@
       return ["Pronta", "Ativa", "Publicado", "Alta margem", "Urgente", "Conversao"].some(label => String(status).includes(label));
     }
 
+    function isCampaignActive(campaign) {
+      if (typeof campaign.active === "boolean") return campaign.active;
+      return isCampaignReady(campaign);
+    }
+
+    function ensureCampaignActivityState() {
+      campaignPerformance.forEach(campaign => {
+        if (typeof campaign.active !== "boolean") {
+          campaign.active = isCampaignReady(campaign);
+        }
+      });
+    }
+
     function roi(revenue, cost) {
       if (!cost) return 0;
       return Math.round(((revenue - cost) / cost) * 100);
@@ -1814,7 +1931,8 @@
         selectedCampaignIds.clear();
       }
       selectedCampaignId = selectedCampaignIds.size ? "selection" : "general";
-      const readyCount = campaignPerformance.filter(isCampaignReady).length;
+      ensureCampaignActivityState();
+      const readyCount = campaignPerformance.filter(isCampaignActive).length;
       document.getElementById("campaignCountTag").textContent = readyCount
         ? `${readyCount} ativas`
         : "sem ativas";
@@ -1844,7 +1962,7 @@
       }
       document.getElementById("campaignList").innerHTML = campaignPerformance.map(campaign => {
         const selected = selectedCampaignIds.has(campaign.id) ? " active" : "";
-        const ready = isCampaignReady(campaign);
+        const ready = isCampaignActive(campaign);
         const launchStatus = campaignLaunchStatus(campaign);
         return `
           <button class="campaign-row ${ready ? "ready" : "idle"}${selected}" data-campaign-id="${campaign.id}">
@@ -1915,6 +2033,154 @@
       });
     }
 
+    function campaignDashboardHtml(campaign, mode = "single") {
+      const selected = campaign || { ...campaignTotals(campaignPerformance.filter(isCampaignActive)), name: "Visão geral das campanhas ativas", segment: "Campanhas ativas", channel: "Consolidado" };
+      const rate = conversionRate(selected.conversions, selected.audience);
+      const clickRate = selected.audience ? Math.round((selected.clicks / selected.audience) * 1000) / 10 : 0;
+      const costShare = selected.revenue ? Math.round((selected.cost / selected.revenue) * 1000) / 10 : 0;
+      const roasValue = roas(selected.revenue, selected.cost);
+      const profit = Math.max(0, selected.revenue - selected.cost);
+      const pieTotal = Math.max(1, selected.revenue);
+      const profitEnd = Math.round((profit / pieTotal) * 1000) / 10;
+      const costEnd = Math.min(100, Math.round(((profit + selected.cost) / pieTotal) * 1000) / 10);
+      return `
+        <div class="mini-metrics">
+          <div class="mini-metric"><small>Publico</small><strong>${selected.audience.toLocaleString("pt-BR")}</strong></div>
+          <div class="mini-metric"><small>Conversoes</small><strong>${selected.conversions.toLocaleString("pt-BR")}</strong></div>
+          <div class="mini-metric"><small>Receita</small><strong>${money(selected.revenue)}</strong></div>
+          <div class="mini-metric"><small>Gasto real</small><strong>${money(selected.cost)}</strong></div>
+          <div class="mini-metric"><small>ROI real</small><strong>${roi(selected.revenue, selected.cost)}%</strong></div>
+        </div>
+        <div style="height:14px"></div>
+        <div class="campaign-insight-grid">
+          <div class="pie-chart" style="background:conic-gradient(#2563eb 0 ${profitEnd}%, #f04438 ${profitEnd}% ${costEnd}%, #e4e7ec ${costEnd}% 100%)"><span>${roi(selected.revenue, selected.cost)}%</span></div>
+          <div>
+            <div class="pie-legend">
+              <div class="legend-item"><span><i class="legend-dot" style="background:#2563eb"></i>Resultado liquido</span><strong>${money(profit)}</strong></div>
+              <div class="legend-item"><span><i class="legend-dot" style="background:#f04438"></i>Gasto real</span><strong>${money(selected.cost)}</strong></div>
+              <div class="legend-item"><span><i class="legend-dot" style="background:#0f8b8d"></i>Receita atribuida</span><strong>${money(selected.revenue)}</strong></div>
+            </div>
+            <div style="height:14px"></div>
+            <div class="bars">
+              ${[
+                { label: "Taxa de clique", width: clickRate * 4, display: `${clickRate}%` },
+                { label: "Taxa de conversao", width: rate * 8, display: `${rate}%` },
+                { label: "Custo sobre receita", width: costShare * 2, display: `${costShare}%` },
+                { label: "ROAS", width: roasValue * 16, display: `${roasValue}x` },
+              ].map(metric => `
+                <div class="bar-row">
+                  <span>${metric.label}</span>
+                  <div class="track"><div class="fill" style="width:${Math.min(100, metric.width)}%"></div></div>
+                  <strong>${metric.display}</strong>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderActiveCampaignDashboard(campaignId = activeCampaignDetailId) {
+      ensureCampaignActivityState();
+      const activeCampaigns = campaignPerformance.filter(isCampaignActive);
+      const campaign = campaignPerformance.find(item => item.id === campaignId);
+      const title = document.getElementById("activeCampaignTitle");
+      const subtitle = document.getElementById("activeCampaignSubtitle");
+      const dashboard = document.getElementById("activeCampaignDashboard");
+      if (!dashboard || !title || !subtitle) return;
+      if (campaign && isCampaignActive(campaign)) {
+        activeCampaignDetailId = campaign.id;
+        title.textContent = campaign.name;
+        subtitle.textContent = `${campaign.segment} • ${campaign.channel} • campanha ativa em acompanhamento`;
+        dashboard.innerHTML = campaignDashboardHtml(campaign, "single");
+        return;
+      }
+      activeCampaignDetailId = null;
+      title.textContent = "Visão geral das campanhas ativas";
+      subtitle.textContent = activeCampaigns.length
+        ? "Consolidado das campanhas atualmente ativadas"
+        : "Nenhuma campanha ativa no momento";
+      dashboard.innerHTML = activeCampaigns.length
+        ? campaignDashboardHtml(null, "general")
+        : `<div class="campaign-dashboard-empty">Nenhuma campanha ativa. Ative uma campanha nos cards acima para começar o acompanhamento.</div>`;
+    }
+
+    function renderActiveCampaignCenter() {
+      ensureCampaignActivityState();
+      const container = document.getElementById("activeCampaignCards");
+      const tag = document.getElementById("activeCampaignsTag");
+      if (!container || !tag) return;
+      const activeCount = campaignPerformance.filter(isCampaignActive).length;
+      tag.textContent = activeCount ? `${activeCount} ativas` : "sem ativas";
+      tag.className = `tag ${activeCount ? "blue" : "coral"}`;
+      if (!campaignPerformance.length) {
+        container.innerHTML = `
+          <div class="campaign-control-card inactive">
+            <header>
+              <div>
+                <h3>Nenhuma campanha criada</h3>
+                <p>Importe um CSV ou sincronize o CRM para gerar campanhas operáveis.</p>
+              </div>
+              <span class="tag coral">Sem campanha</span>
+            </header>
+          </div>
+        `;
+        renderActiveCampaignDashboard(null);
+        return;
+      }
+      container.innerHTML = campaignPerformance.map(campaign => {
+        const active = isCampaignActive(campaign);
+        const selected = activeCampaignDetailId === campaign.id ? " selected" : "";
+        return `
+          <div class="campaign-control-card ${active ? "active" : "inactive"}${selected}" data-active-campaign-id="${campaign.id}">
+            <header>
+              <div>
+                <h3>${campaign.name}</h3>
+                <p>${campaign.segment} • ${campaign.channel}<br>${campaign.conversions.toLocaleString("pt-BR")} conversões • ${money(campaign.revenue)} em receita</p>
+              </div>
+              <span class="tag ${active ? "blue" : "coral"}">${active ? "Ativa" : "Desativada"}</span>
+            </header>
+            <div class="integration-meta">
+              ROI real: ${roi(campaign.revenue, campaign.cost)}%<br>
+              Gasto real: ${money(campaign.cost)} • ROAS: ${roas(campaign.revenue, campaign.cost)}x
+            </div>
+            <div class="campaign-control-actions">
+              <button class="btn ${active ? "" : "primary"}" data-toggle-campaign="${campaign.id}">${active ? "Desativar" : "Ativar"}</button>
+              <span class="tag ${active ? "green" : "gold"}">${active ? "Dashboard disponível" : "Aguardando ativação"}</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+      document.querySelectorAll("[data-toggle-campaign]").forEach(button => {
+        button.addEventListener("click", event => {
+          event.stopPropagation();
+          const campaign = campaignPerformance.find(item => item.id === button.dataset.toggleCampaign);
+          if (!campaign) return;
+          campaign.active = !isCampaignActive(campaign);
+          if (campaign.active) {
+            activeCampaignDetailId = campaign.id;
+          } else if (activeCampaignDetailId === campaign.id) {
+            activeCampaignDetailId = null;
+          }
+          renderActiveCampaignCenter();
+          renderCampaignPerformance("general");
+        });
+      });
+      document.querySelectorAll("[data-active-campaign-id]").forEach(card => {
+        card.addEventListener("click", () => {
+          const campaign = campaignPerformance.find(item => item.id === card.dataset.activeCampaignId);
+          if (!campaign) return;
+          if (!isCampaignActive(campaign)) {
+            document.getElementById("activeCampaignSubtitle").textContent = "Campanha desativada. Clique em Ativar para liberar o dashboard individual.";
+            return;
+          }
+          activeCampaignDetailId = campaign.id;
+          renderActiveCampaignCenter();
+        });
+      });
+      renderActiveCampaignDashboard(activeCampaignDetailId);
+    }
+
     function renderCampaignSchedule() {
       if (!campaignSchedule.length) {
         document.getElementById("campaignScheduleRows").innerHTML = `
@@ -1946,6 +2212,7 @@
       actions = [["Importe um CSV ou sincronize o CRM", "O dashboard esta zerado. Carregue uma base para gerar clientes, segmentos, campanhas e agenda."]];
       selectedCampaignId = "general";
       selectedCampaignIds.clear();
+      activeCampaignDetailId = null;
     }
 
     function resetDashboardCards() {
@@ -2004,6 +2271,7 @@
         renderFeed();
         renderCustomers(document.getElementById("customerSearch").value);
         renderCampaignPerformance("general");
+        renderActiveCampaignCenter();
         renderCampaignSchedule();
         return;
       }
@@ -2018,6 +2286,7 @@
       renderFeed();
       renderCustomers(document.getElementById("customerSearch").value);
       renderCampaignPerformance("general");
+      renderActiveCampaignCenter();
       renderCampaignSchedule();
     }
 
@@ -3016,6 +3285,10 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
     document.getElementById("showCampaignGeneral").addEventListener("click", () => {
       renderCampaignPerformance("general");
     });
+    document.getElementById("activeCampaignGeneral").addEventListener("click", () => {
+      activeCampaignDetailId = null;
+      renderActiveCampaignCenter();
+    });
     document.querySelectorAll("[data-kpi-target]").forEach(card => {
       card.addEventListener("click", () => {
         const target = card.dataset.kpiTarget;
@@ -3051,9 +3324,8 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
       activateTab("integrations");
     });
     document.getElementById("openActiveCampaigns").addEventListener("click", () => {
-      activateTab("dashboard");
-      renderCampaignPerformance("general");
-      scrollToElement("campaignList");
+      activateTab("activeCampaigns");
+      renderActiveCampaignCenter();
     });
     document.getElementById("syncCrm").addEventListener("click", (event) => {
       event.preventDefault();
@@ -3150,6 +3422,7 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
     renderSegments();
     renderFeed();
     renderCampaignPerformance();
+    renderActiveCampaignCenter();
     renderCampaignSchedule();
     renderCustomers();
     renderIntegrations();
