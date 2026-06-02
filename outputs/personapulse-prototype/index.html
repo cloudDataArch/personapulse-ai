@@ -417,6 +417,7 @@
 
     .campaign-list {
       display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
       gap: 10px;
     }
 
@@ -430,12 +431,38 @@
       text-align: left;
       display: grid;
       gap: 8px;
+      min-height: 132px;
     }
 
     .campaign-row:hover,
     .campaign-row.active {
-      border-color: var(--teal);
-      box-shadow: 0 0 0 3px rgba(15, 139, 141, .10);
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+    }
+
+    .campaign-row.ready {
+      border-color: #bfdbfe;
+      background: #eff6ff;
+    }
+
+    .campaign-row.idle {
+      border-color: #fecaca;
+      background: #fff1f2;
+    }
+
+    .campaign-row .campaign-status {
+      width: fit-content;
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .campaign-row.idle .campaign-status {
+      background: #fee2e2;
+      color: #b42318;
     }
 
     .campaign-row strong {
@@ -473,6 +500,75 @@
     .mini-metric strong {
       font-size: 18px;
       display: block;
+    }
+
+    .campaign-insight-grid {
+      display: grid;
+      grid-template-columns: minmax(180px, 260px) 1fr;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .pie-chart {
+      width: min(220px, 100%);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: conic-gradient(#2563eb 0 60%, #0f8b8d 60% 82%, #f04438 82% 100%);
+      position: relative;
+      box-shadow: inset 0 0 0 1px rgba(16, 24, 40, .08);
+    }
+
+    .pie-chart::after {
+      content: "";
+      position: absolute;
+      inset: 24%;
+      border-radius: 50%;
+      background: white;
+      box-shadow: 0 0 0 1px rgba(16, 24, 40, .08);
+    }
+
+    .pie-chart span {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      font-weight: 800;
+      color: var(--ink);
+      font-size: 18px;
+      padding: 30%;
+    }
+
+    .pie-legend {
+      display: grid;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 10px;
+      background: white;
+    }
+
+    .legend-item strong {
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
     }
 
     .tag {
@@ -781,6 +877,7 @@
       .ai-prompt { max-width: none; width: 100%; }
       .nav { grid-template-columns: 1fr 1fr; }
       .form-grid, .connector-fields { grid-template-columns: 1fr; }
+      .campaign-insight-grid { grid-template-columns: 1fr; }
       .bar-row { grid-template-columns: 92px 1fr 42px; }
       th:nth-child(4), td:nth-child(4) { display: none; }
       .ai-result-head { align-items: flex-start; flex-direction: column; }
@@ -1022,7 +1119,14 @@
                 <div class="mini-metric"><small>ROI real</small><strong id="metricRoi">-</strong></div>
               </div>
               <div style="height:14px"></div>
-              <div class="bars" id="campaignMetricBars"></div>
+              <div class="campaign-insight-grid">
+                <div class="pie-chart" id="campaignPie"><span id="campaignPieLabel">0%</span></div>
+                <div>
+                  <div class="pie-legend" id="campaignPieLegend"></div>
+                  <div style="height:14px"></div>
+                  <div class="bars" id="campaignMetricBars"></div>
+                </div>
+              </div>
             </div>
           </article>
         </div>
@@ -1441,6 +1545,7 @@
     let aiGenerationCount = 0;
     let campaignGenerationCount = 0;
     let selectedCampaignId = "general";
+    let selectedCampaignIds = new Set();
     let selectedConnectorId = null;
     const DEFAULT_API_BASE_URL = "https://personapulse-ai.onrender.com";
 
@@ -1666,8 +1771,8 @@
       return `${day}/${month}/${year}`;
     }
 
-    function campaignTotals() {
-      return campaignPerformance.reduce((acc, campaign) => {
+    function campaignTotals(items = campaignPerformance) {
+      return items.reduce((acc, campaign) => {
         acc.audience += campaign.audience;
         acc.clicks += campaign.clicks;
         acc.conversions += campaign.conversions;
@@ -1675,6 +1780,16 @@
         acc.cost += campaign.cost;
         return acc;
       }, { audience: 0, clicks: 0, conversions: 0, revenue: 0, cost: 0 });
+    }
+
+    function campaignLaunchStatus(campaign) {
+      const schedule = campaignSchedule.find(item => item[0] === campaign.name);
+      return schedule ? schedule[3] : campaign.status;
+    }
+
+    function isCampaignReady(campaign) {
+      const status = campaignLaunchStatus(campaign);
+      return ["Pronta", "Ativa", "Publicado", "Alta margem", "Urgente", "Conversao"].some(label => String(status).includes(label));
     }
 
     function roi(revenue, cost) {
@@ -1693,17 +1808,24 @@
     }
 
     function renderCampaignPerformance(selectedId = selectedCampaignId) {
-      selectedCampaignId = selectedId;
-      document.getElementById("campaignCountTag").textContent = `${campaignPerformance.length} campanhas`;
+      const validCampaignIds = new Set(campaignPerformance.map(campaign => campaign.id));
+      selectedCampaignIds = new Set([...selectedCampaignIds].filter(id => validCampaignIds.has(id)));
+      if (selectedId === "general") {
+        selectedCampaignIds.clear();
+      }
+      selectedCampaignId = selectedCampaignIds.size ? "selection" : "general";
+      const readyCount = campaignPerformance.filter(isCampaignReady).length;
+      document.getElementById("campaignCountTag").textContent = readyCount
+        ? `${readyCount} ativas`
+        : "sem ativas";
+      document.getElementById("campaignCountTag").className = `tag ${readyCount ? "blue" : "coral"}`;
       if (!campaignPerformance.length) {
         document.getElementById("campaignList").innerHTML = `
-          <div class="empty-state">
-            <div>
-              <strong>Nenhuma campanha criada ainda.</strong>
-              <div style="height:6px"></div>
-              Importe um CSV para a IA gerar campanhas e numeros.
-            </div>
-          </div>
+          <button class="campaign-row idle" type="button">
+            <span class="campaign-status">Sem campanha ativa</span>
+            <strong>Nenhuma campanha criada ainda.</strong>
+            <span>Importe um CSV ou sincronize o CRM para a IA gerar campanhas e numeros.</span>
+          </button>
         `;
         document.getElementById("campaignDetailTitle").textContent = "Visao geral das campanhas";
         document.getElementById("campaignDetailSubtitle").textContent = "Importe ou sincronize fontes para ver gasto, receita atribuida e ROI real.";
@@ -1712,13 +1834,21 @@
         document.getElementById("metricRevenue").textContent = "R$ 0";
         document.getElementById("metricSpend").textContent = "R$ 0";
         document.getElementById("metricRoi").textContent = "0%";
+        document.getElementById("campaignPie").style.background = "conic-gradient(#f04438 0 100%)";
+        document.getElementById("campaignPieLabel").textContent = "0%";
+        document.getElementById("campaignPieLegend").innerHTML = `
+          <div class="legend-item"><span><i class="legend-dot" style="background:#f04438"></i>Sem dados</span><strong>R$ 0</strong></div>
+        `;
         document.getElementById("campaignMetricBars").innerHTML = "";
         return;
       }
       document.getElementById("campaignList").innerHTML = campaignPerformance.map(campaign => {
-        const active = selectedId === campaign.id ? " active" : "";
+        const selected = selectedCampaignIds.has(campaign.id) ? " active" : "";
+        const ready = isCampaignReady(campaign);
+        const launchStatus = campaignLaunchStatus(campaign);
         return `
-          <button class="campaign-row${active}" data-campaign-id="${campaign.id}">
+          <button class="campaign-row ${ready ? "ready" : "idle"}${selected}" data-campaign-id="${campaign.id}">
+            <span class="campaign-status">${ready ? "Ativa" : "Nao ativa"} • ${launchStatus}</span>
             <strong>${campaign.name}</strong>
             <span>${campaign.segment} • ${campaign.channel} • ${campaign.status}</span>
             <span>${campaign.conversions} conversões • ${money(campaign.revenue)} em receita • ROI real ${roi(campaign.revenue, campaign.cost)}%</span>
@@ -1726,15 +1856,16 @@
         `;
       }).join("");
 
-      const selected = selectedId === "general"
-        ? { ...campaignTotals(), name: "Visao geral das campanhas", segment: "Todas as campanhas ativas", channel: "Consolidado" }
-        : campaignPerformance.find(campaign => campaign.id === selectedId) || campaignPerformance[0];
+      const selectedItems = campaignPerformance.filter(campaign => selectedCampaignIds.has(campaign.id));
+      const selected = selectedItems.length
+        ? { ...campaignTotals(selectedItems), name: selectedItems.length === 1 ? selectedItems[0].name : `${selectedItems.length} campanhas selecionadas`, segment: selectedItems.map(item => item.name).join(", "), channel: "Comparativo" }
+        : { ...campaignTotals(), name: "Visao geral das campanhas", segment: "Todas as campanhas", channel: "Consolidado" };
 
-      const isGeneral = selectedId === "general";
+      const isGeneral = !selectedItems.length;
       document.getElementById("campaignDetailTitle").textContent = isGeneral ? "Visão geral das campanhas" : selected.name;
       document.getElementById("campaignDetailSubtitle").textContent = isGeneral
-        ? "ROI real = (receita atribuida - gasto real) / gasto real"
-        : `${selected.segment} • ${selected.channel} • ROI real por receita atribuida`;
+        ? "Clique em uma ou mais campanhas para comparar resultados individuais"
+        : `${selected.segment} • ROI real = (receita atribuida - gasto real) / gasto real`;
 
       document.getElementById("metricAudience").textContent = selected.audience.toLocaleString("pt-BR");
       document.getElementById("metricConversions").textContent = selected.conversions.toLocaleString("pt-BR");
@@ -1746,6 +1877,17 @@
       const clickRate = selected.audience ? Math.round((selected.clicks / selected.audience) * 1000) / 10 : 0;
       const costShare = selected.revenue ? Math.round((selected.cost / selected.revenue) * 1000) / 10 : 0;
       const roasValue = roas(selected.revenue, selected.cost);
+      const profit = Math.max(0, selected.revenue - selected.cost);
+      const pieTotal = Math.max(1, selected.revenue);
+      const profitEnd = Math.round((profit / pieTotal) * 1000) / 10;
+      const costEnd = Math.min(100, Math.round(((profit + selected.cost) / pieTotal) * 1000) / 10);
+      document.getElementById("campaignPie").style.background = `conic-gradient(#2563eb 0 ${profitEnd}%, #f04438 ${profitEnd}% ${costEnd}%, #e4e7ec ${costEnd}% 100%)`;
+      document.getElementById("campaignPieLabel").textContent = `${roi(selected.revenue, selected.cost)}%`;
+      document.getElementById("campaignPieLegend").innerHTML = `
+        <div class="legend-item"><span><i class="legend-dot" style="background:#2563eb"></i>Resultado liquido</span><strong>${money(profit)}</strong></div>
+        <div class="legend-item"><span><i class="legend-dot" style="background:#f04438"></i>Gasto real</span><strong>${money(selected.cost)}</strong></div>
+        <div class="legend-item"><span><i class="legend-dot" style="background:#0f8b8d"></i>Receita atribuida</span><strong>${money(selected.revenue)}</strong></div>
+      `;
       const metrics = [
         { label: "Taxa de clique", value: clickRate, width: clickRate * 4, display: `${clickRate}%` },
         { label: "Taxa de conversao", value: rate, width: rate * 8, display: `${rate}%` },
@@ -1761,7 +1903,15 @@
       `).join("");
 
       document.querySelectorAll("[data-campaign-id]").forEach(button => {
-        button.addEventListener("click", () => renderCampaignPerformance(button.dataset.campaignId));
+        button.addEventListener("click", () => {
+          const campaignId = button.dataset.campaignId;
+          if (selectedCampaignIds.has(campaignId)) {
+            selectedCampaignIds.delete(campaignId);
+          } else {
+            selectedCampaignIds.add(campaignId);
+          }
+          renderCampaignPerformance();
+        });
       });
     }
 
@@ -1795,6 +1945,7 @@
       campaignSchedule = [];
       actions = [["Importe um CSV ou sincronize o CRM", "O dashboard esta zerado. Carregue uma base para gerar clientes, segmentos, campanhas e agenda."]];
       selectedCampaignId = "general";
+      selectedCampaignIds.clear();
     }
 
     function resetDashboardCards() {
