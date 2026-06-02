@@ -847,6 +847,10 @@
             <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 4v6h6"/><path d="M20 20v-6h-6"/><path d="M20 9A8 8 0 0 0 6.3 5.7L4 10"/><path d="M4 15a8 8 0 0 0 13.7 3.3L20 14"/></svg></span>
             Sincronizar CRM
           </button>
+          <button class="btn" id="openActiveCampaigns" title="Ver campanhas ativas">
+            <span class="ico"><svg viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 13v-2z"/><path d="M7 14v4a2 2 0 0 0 2 2h2"/><path d="M17 9a4 4 0 0 1 0 6"/></svg></span>
+            Campanhas Ativas
+          </button>
           <button class="btn" id="syncMetaAds" title="Sincronizar campanhas do Meta Ads" onclick="window.syncMetaAdsData && window.syncMetaAdsData()">
             <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 12h4l3 8 5-16 3 8h1"/><path d="M4 20h16"/></svg></span>
             Meta Ads
@@ -985,8 +989,8 @@
           <article class="panel">
             <div class="panel-header">
               <div>
-                <h2>Campanhas ativas</h2>
-                <span>Clique para ver os numeros por campanha</span>
+                <h2>Central de campanhas ativas</h2>
+                <span>Escolha uma campanha para ver os numeros individualmente</span>
               </div>
               <span class="tag blue" id="campaignCountTag">4 campanhas</span>
             </div>
@@ -2883,6 +2887,11 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
     });
     document.getElementById("openIntegrationsPanel").addEventListener("click", () => {
       activateTab("integrations");
+    });
+    document.getElementById("openActiveCampaigns").addEventListener("click", () => {
+      activateTab("dashboard");
+      renderCampaignPerformance("general");
+      scrollToElement("campaignList");
     });
     document.getElementById("syncCrm").addEventListener("click", (event) => {
       event.preventDefault();
