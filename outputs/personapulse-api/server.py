@@ -18,6 +18,7 @@ DATA_DIR = BASE_DIR / "data"
 STORE_FILE = DATA_DIR / "store.json"
 API_VERSION = "v20.0"
 ASSETS_DIR = BASE_DIR / "assets"
+APP_DIR = BASE_DIR / "static" / "personapulse"
 
 
 CONNECTOR_PROVIDERS = {
@@ -730,6 +731,8 @@ class Handler(BaseHTTPRequestHandler):
         store = load_store()
         if path == "/":
             return self.send_html(CITY_CLEAN_HTML)
+        if path in {"/app", "/app/"}:
+            return self.send_file(APP_DIR / "index.html", "text/html; charset=utf-8")
         if path == "/cidade-limpa":
             return self.send_html(CITY_CLEAN_HTML)
         if path == "/assets/campanha-cidade-limpa-horizontal.png":
