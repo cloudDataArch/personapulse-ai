@@ -1338,6 +1338,7 @@
               <div class="form-grid">
                 <label>Segmento
                   <select id="campaignSegment">
+                    <option value="" selected>Escolha uma opção...</option>
                     <option>Clientes premium</option>
                     <option>Abandono de carrinho</option>
                     <option>Clientes inativos</option>
@@ -1346,6 +1347,7 @@
                 </label>
                 <label>Canal
                   <select id="campaignChannel">
+                    <option value="" selected>Escolha uma opção...</option>
                     <option>WhatsApp</option>
                     <option>E-mail</option>
                     <option>Meta Ads</option>
@@ -1354,10 +1356,11 @@
                   </select>
                 </label>
                 <label>Produto
-                  <input id="campaignProduct" value="Perfume premium amadeirado" />
+                  <input id="campaignProduct" value="" />
                 </label>
                 <label>Tom
                   <select id="campaignTone">
+                    <option value="" selected>Escolha uma opção...</option>
                     <option>Sofisticado</option>
                     <option>Direto</option>
                     <option>Promocional</option>
@@ -3060,39 +3063,25 @@
 
     function generateCampaign(options = {}) {
       if (!options.keepAiPanel) hideAiResult();
-      const segment = document.getElementById("campaignSegment").value;
-      const channel = document.getElementById("campaignChannel").value;
-      const product = document.getElementById("campaignProduct").value || (csvInsights && csvInsights.topProduct.value) || "produto recomendado";
-      const tone = document.getElementById("campaignTone").value;
       const output = `VARIACAO CRIATIVA:
-1
 
 Publico:
-${segment}
 
 Produto:
-${product}
 
 Tom:
-${tone}
 
 Conceito criativo:
-Escreva aqui a grande ideia da campanha.
 
 Direcao de campanha:
-Defina o caminho da mensagem, canal principal e promessa central para ${channel}.
 
 Descricao do produto:
-Descreva o produto com beneficio, diferenciais e motivo de compra.
 
 Titulo do Anuncio:
-Crie um titulo direto, forte e memoravel.
 
 Texto Principal:
-Escreva a mensagem principal da campanha.
 
 Chamada de acao:
-Defina a acao esperada do cliente.
 
 Variacao curta:
 Crie uma versao curta para testes A/B.
@@ -3105,10 +3094,10 @@ Finalize com um argumento claro para conversao.`;
     function generateCreativeCampaign(options = {}) {
       if (!options.keepAiPanel) hideAiResult();
       campaignGenerationCount += 1;
-      const segment = document.getElementById("campaignSegment").value;
-      const channel = document.getElementById("campaignChannel").value;
-      const product = document.getElementById("campaignProduct").value || (csvInsights && csvInsights.topProduct.value) || "produto recomendado";
-      const tone = document.getElementById("campaignTone").value;
+      const segment = document.getElementById("campaignSegment").value || "Publico definido pelo usuario";
+      const channel = document.getElementById("campaignChannel").value || "Canal definido pelo usuario";
+      const product = document.getElementById("campaignProduct").value || "produto definido pelo usuario";
+      const tone = document.getElementById("campaignTone").value || "Tom definido pelo usuario";
       const prompt = document.getElementById("aiPrompt").value.trim();
       const lowerProduct = product.toLowerCase();
       const isBike = lowerProduct.includes("bicicleta") || lowerProduct.includes("mtb") || lowerProduct.includes("bike");
@@ -3401,7 +3390,11 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
       document.getElementById("campaigns").scrollIntoView({ behavior: "smooth", block: "start" });
     });
     document.getElementById("regenerateCampaignText").addEventListener("click", () => {
-      generateCreativeCampaign();
+      if (document.getElementById("aiPrompt").value.trim()) {
+        generateCreativeCampaign();
+        return;
+      }
+      generateCampaign();
     });
     document.getElementById("generatePricing").addEventListener("click", generatePricingResearch);
     document.getElementById("exportData").addEventListener("click", exportCurrentView);
