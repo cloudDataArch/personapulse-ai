@@ -175,6 +175,42 @@
       justify-content: flex-end;
     }
 
+    .export-menu-wrap {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .export-menu {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      min-width: 132px;
+      display: none;
+      padding: 6px;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      z-index: 20;
+    }
+
+    .export-menu.open {
+      display: grid;
+      gap: 4px;
+    }
+
+    .export-menu button {
+      width: 100%;
+      justify-content: flex-start;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .export-menu button:hover {
+      background: #eef6ff;
+    }
+
     .ai-prompt {
       min-width: 260px;
       max-width: 360px;
@@ -1043,14 +1079,16 @@
             <option value="meta_ads">Meta Ads</option>
             <option value="all">Tudo</option>
           </select>
-          <select id="exportFormat" title="Formato de exportacao" style="max-width:110px">
-            <option value="csv">CSV</option>
-            <option value="xls">XLS</option>
-          </select>
-          <button class="btn" id="exportData" title="Exportar dados da tela atual">
-            <span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg></span>
-            Exportar
-          </button>
+          <div class="export-menu-wrap">
+            <button class="btn" id="exportData" type="button" title="Exportar dados da tela atual">
+              <span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg></span>
+              Exportar
+            </button>
+            <div class="export-menu" id="exportMenu" aria-label="Formatos de exportacao">
+              <button class="btn" type="button" data-export-format="csv">Exportar CSV</button>
+              <button class="btn" type="button" data-export-format="xls">Exportar XLS</button>
+            </div>
+          </div>
           <button class="btn" id="deleteDataSource" title="Excluir dados da fonte selecionada">
             <span class="ico"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg></span>
             Excluir
@@ -3361,8 +3399,7 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
       URL.revokeObjectURL(url);
     }
 
-    function exportCurrentView() {
-      const format = document.getElementById("exportFormat").value;
+    function exportCurrentView(format = "csv") {
       const { name, rows } = exportRowsForCurrentView();
       const columns = rows.length ? Object.keys(rows[0]) : ["status"];
       const safeName = `personapulse_${name}_${new Date().toISOString().slice(0, 10)}`;
@@ -3397,7 +3434,20 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
       generateCampaign();
     });
     document.getElementById("generatePricing").addEventListener("click", generatePricingResearch);
-    document.getElementById("exportData").addEventListener("click", exportCurrentView);
+    document.getElementById("exportData").addEventListener("click", (event) => {
+      event.stopPropagation();
+      document.getElementById("exportMenu").classList.toggle("open");
+    });
+    document.querySelectorAll("[data-export-format]").forEach(button => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        document.getElementById("exportMenu").classList.remove("open");
+        exportCurrentView(button.dataset.exportFormat);
+      });
+    });
+    document.addEventListener("click", () => {
+      document.getElementById("exportMenu").classList.remove("open");
+    });
     document.getElementById("dailyRefresh").addEventListener("click", () => {
       const prompt = document.getElementById("aiPrompt").value.trim();
       if (!document.getElementById("campaigns").classList.contains("active")) {
