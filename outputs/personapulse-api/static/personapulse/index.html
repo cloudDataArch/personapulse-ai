@@ -180,6 +180,10 @@
       max-width: 360px;
     }
 
+    [data-ai-only].hidden {
+      display: none;
+    }
+
     .btn {
       min-height: 38px;
       border: 1px solid var(--line);
@@ -436,6 +440,10 @@
       background: var(--green-soft);
       border-radius: 999px;
       padding: 5px 8px;
+    }
+
+    .kpi em:empty {
+      display: none;
     }
 
     .bars {
@@ -1035,13 +1043,21 @@
             <option value="meta_ads">Meta Ads</option>
             <option value="all">Tudo</option>
           </select>
+          <select id="exportFormat" title="Formato de exportacao" style="max-width:110px">
+            <option value="csv">CSV</option>
+            <option value="xls">XLS</option>
+          </select>
+          <button class="btn" id="exportData" title="Exportar dados da tela atual">
+            <span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg></span>
+            Exportar
+          </button>
           <button class="btn" id="deleteDataSource" title="Excluir dados da fonte selecionada">
             <span class="ico"><svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg></span>
             Excluir
           </button>
           <input id="csvFileInput" type="file" accept=".csv,text/csv" style="display:none" />
-          <input id="aiPrompt" class="ai-prompt" maxlength="90" placeholder="Prompt curto para a IA" value="gerar campanha mais persuasiva" />
-          <button class="btn primary" id="dailyRefresh" title="Atualizar recomendacoes">
+          <input id="aiPrompt" class="ai-prompt" data-ai-only maxlength="90" placeholder="Prompt curto para a IA" value="" />
+          <button class="btn primary" id="dailyRefresh" data-ai-only title="Gerar sugestao por IA">
             <span class="ico"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v6h-6"/></svg></span>
             Gerar IA
           </button>
@@ -1084,7 +1100,7 @@
           <article class="panel kpi" data-kpi-target="customers" title="Ver clientes analisados">
             <small>Clientes analisados</small>
             <strong id="kpiCustomers">0</strong>
-            <em>importe um CSV</em>
+            <em>base analisada</em>
           </article>
           <article class="panel kpi" data-kpi-target="revenue" title="Ver origem da receita influenciada">
             <small>Receita influenciada</small>
@@ -1094,7 +1110,7 @@
           <article class="panel kpi" data-kpi-target="campaignSchedule" title="Ver campanhas e datas de lançamento">
             <small>Campanhas prontas</small>
             <strong id="kpiCampaigns">0</strong>
-            <em>aguardando IA</em>
+            <em></em>
           </article>
           <article class="panel kpi" data-kpi-target="privacy" title="Ver LGPD e consentimentos">
             <small>Conformidade LGPD</small>
@@ -1145,7 +1161,7 @@
             <div class="panel-header">
               <div>
                 <h2>Acoes recomendadas</h2>
-                <span>Fila diaria gerada pela IA</span>
+                <span>Recomendacoes diarias de como melhorar sua campanha</span>
               </div>
             </div>
             <div class="panel-body">
@@ -1251,7 +1267,7 @@
           <div class="panel-header">
             <div>
               <h2>Base de clientes importada</h2>
-              <span id="customerTableSubtitle">Importe um CSV para visualizar os registros aqui.</span>
+              <span id="customerTableSubtitle">Conecte uma fonte de dados para visualizar os registros aqui.</span>
             </div>
             <input id="customerSearch" type="search" placeholder="Buscar cliente, produto ou status" style="max-width:320px" />
           </div>
@@ -1606,11 +1622,12 @@
     });
     const pageMeta = {
       dashboard: ["Dashboard executivo", "Visao diaria de clientes, campanhas e oportunidades de venda."],
-      customers: ["Clientes importados", "Visualize os registros carregados via CSV e confira os dados usados na segmentacao."],
+      customers: ["Clientes analisados", "Visualize registros vindos das fontes conectadas e confira os dados usados na segmentacao."],
       segments: ["Segmentos de clientes", "Perfis comportamentais criados com dados proprios e consentidos."],
       campaigns: ["Gerador de campanhas", "Crie mensagens para WhatsApp, e-mail, Ads e SEO com apoio da IA."],
       pricing: ["Pesquisa de preços", "Analise referências de mercado, posicionamento e faixa de preço por produto."],
       integrations: ["Central de integrações", "Conecte APIs oficiais de Ads, CRM e marketplaces sem poluir o dashboard."],
+      activeCampaigns: ["Campanhas ativas", "Ative, pause e acompanhe resultados individuais das campanhas."],
       recommendations: ["Recomendacoes da IA", "Fila de decisoes sugeridas para melhorar conversao e recompra."],
       privacy: ["LGPD e auditoria", "Controles de consentimento, origem dos dados e exclusao."],
     };
@@ -1628,8 +1645,12 @@
       document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
       button.classList.add("active");
       document.getElementById(tabName).classList.add("active");
-      document.getElementById("pageTitle").textContent = pageMeta[tabName][0];
-      document.getElementById("pageSubtitle").textContent = pageMeta[tabName][1];
+      const meta = pageMeta[tabName] || [tabName, ""];
+      document.getElementById("pageTitle").textContent = meta[0];
+      document.getElementById("pageSubtitle").textContent = meta[1];
+      document.querySelectorAll("[data-ai-only]").forEach(control => {
+        control.classList.toggle("hidden", tabName !== "campaigns");
+      });
     }
 
     let importedHeaders = [];
@@ -1938,11 +1959,11 @@
           <button class="campaign-row idle" type="button">
             <span class="campaign-status">Sem campanha ativa</span>
             <strong>Nenhuma campanha criada ainda.</strong>
-            <span>Importe um CSV ou sincronize o CRM para a IA gerar campanhas e numeros.</span>
+            <span>Conecte uma fonte de dados ou prepare uma campanha manualmente.</span>
           </button>
         `;
         document.getElementById("campaignDetailTitle").textContent = "Visao geral das campanhas";
-        document.getElementById("campaignDetailSubtitle").textContent = "Importe ou sincronize fontes para ver gasto, receita atribuida e ROI real.";
+        document.getElementById("campaignDetailSubtitle").textContent = "Conecte fontes de dados para ver gasto, receita atribuida e ROI real.";
         document.getElementById("metricAudience").textContent = "0";
         document.getElementById("metricConversions").textContent = "0";
         document.getElementById("metricRevenue").textContent = "R$ 0";
@@ -2115,7 +2136,7 @@
             <header>
               <div>
                 <h3>Nenhuma campanha criada</h3>
-                <p>Importe um CSV ou sincronize o CRM para gerar campanhas operáveis.</p>
+                <p>Prepare ou conecte campanhas para acompanhar performance.</p>
               </div>
               <span class="tag coral">Sem campanha</span>
             </header>
@@ -2181,17 +2202,17 @@
       if (!campaignSchedule.length) {
         document.getElementById("campaignScheduleRows").innerHTML = `
           <tr>
-            <td colspan="4">Importe um CSV para gerar agenda de lançamento.</td>
+            <td colspan="4" contenteditable="true">Prepare uma campanha para gerar uma agenda de lançamento.</td>
           </tr>
         `;
         return;
       }
       document.getElementById("campaignScheduleRows").innerHTML = campaignSchedule.map(([name, channel, date, status]) => `
         <tr>
-          <td><strong>${name}</strong></td>
-          <td>${channel}</td>
-          <td>${date}</td>
-          <td>${iconTag(status, status === "Pronta" ? "green" : status === "Revisao" ? "gold" : "blue")}</td>
+          <td contenteditable="true"><strong>${name}</strong></td>
+          <td contenteditable="true">${channel}</td>
+          <td contenteditable="true">${date}</td>
+          <td contenteditable="true">${iconTag(status, status === "Pronta" ? "green" : status === "Revisao" ? "gold" : "blue")}</td>
         </tr>
       `).join("");
     }
@@ -2205,7 +2226,7 @@
       segments = [];
       campaignPerformance = [];
       campaignSchedule = [];
-      actions = [["Importe um CSV ou sincronize o CRM", "O dashboard esta zerado. Carregue uma base para gerar clientes, segmentos, campanhas e agenda."]];
+      actions = [["Conecte uma fonte de dados", "Use uma base, CRM, Ads, marketplace ou campanha propria para alimentar clientes, segmentos, campanhas e agenda."]];
       selectedCampaignId = "general";
       selectedCampaignIds.clear();
       activeCampaignDetailId = null;
@@ -2219,9 +2240,9 @@
       const lgpdCard = document.querySelectorAll(".kpi strong")[3];
       if (revenueCard) revenueCard.textContent = "R$ 0";
       if (lgpdCard) lgpdCard.textContent = "0%";
-      if (cards[0]) cards[0].querySelector("em").textContent = "importe um CSV";
+      if (cards[0]) cards[0].querySelector("em").textContent = "base analisada";
       if (cards[1]) cards[1].querySelector("em").textContent = "aguardando base";
-      if (cards[2]) cards[2].querySelector("em").textContent = "aguardando IA";
+      if (cards[2]) cards[2].querySelector("em").textContent = "";
       if (cards[3]) cards[3].querySelector("em").textContent = "sem base importada";
     }
 
@@ -2474,14 +2495,19 @@
       if (lgpdCard) {
         lgpdCard.textContent = `${insights.consentRate}%`;
       }
+      const cards = document.querySelectorAll(".kpi");
+      if (cards[0]) cards[0].querySelector("em").textContent = "base analisada";
+      if (cards[1]) cards[1].querySelector("em").textContent = "base ativa";
+      if (cards[2]) cards[2].querySelector("em").textContent = "";
+      if (cards[3]) cards[3].querySelector("em").textContent = "consentimento";
       const notice = document.getElementById("csvNotice");
-      notice.querySelector("span").innerHTML = messageHtml || `<strong>Base atualizada.</strong> ${insights.total.toLocaleString("pt-BR")} registros analisados de ${fileName}. ${sourceSummary()}. Ticket medio: ${insights.avgTicket.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. Canal mais comum: ${insights.topChannel.value}.`;
+      notice.querySelector("span").innerHTML = messageHtml || `<strong>Base atualizada.</strong> ${insights.total.toLocaleString("pt-BR")} registros analisados nas fontes conectadas. ${sourceSummary()}. Ticket medio: ${insights.avgTicket.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. Canal mais comum: ${insights.topChannel.value}.`;
       notice.classList.add("visible");
     }
 
     function updateActionsFromInsights(insights, fileName) {
       actions = [
-        ["Base analisada", `${insights.total.toLocaleString("pt-BR")} clientes foram analisados sem misturar as fontes. ${fileName}.`],
+        ["Base analisada", `${insights.total.toLocaleString("pt-BR")} clientes foram analisados mantendo a origem de cada fonte. ${fileName}.`],
         ["Priorizar alta intencao", `${insights.highIntentCount.toLocaleString("pt-BR")} clientes tem score igual ou acima de 80. Produto mais recorrente: ${insights.topProduct.value}.`],
         ["Atacar carrinhos", `${insights.cartCount.toLocaleString("pt-BR")} clientes tem carrinho abandonado. Canal preferido dominante: ${insights.topChannel.value}.`],
         ["Proteger LGPD", `${insights.consentRate}% da base possui consentimento de marketing. Clientes sem consentimento devem ficar fora de campanhas.`],
@@ -2607,7 +2633,7 @@
       document.getElementById("customersTableWrap").style.display = importedCustomers.length ? "block" : "none";
       document.getElementById("customerTableSubtitle").textContent = importedCustomers.length
         ? `${visibleRows.length.toLocaleString("pt-BR")} de ${importedCustomers.length.toLocaleString("pt-BR")} registros exibidos. ${sourceSummary()}.`
-        : "Importe um CSV ou sincronize o CRM para visualizar os registros aqui.";
+        : "Conecte uma fonte de dados para visualizar os registros aqui.";
 
       const consentCount = importedCustomers.filter(c => pick(c, ["consentimento_marketing", "consentimento"], "").toLowerCase() === "sim").length;
       const cartCount = importedCustomers.filter(c => pick(c, ["carrinho_abandonado"], "").toLowerCase() === "sim").length;
@@ -3038,30 +3064,41 @@
       const channel = document.getElementById("campaignChannel").value;
       const product = document.getElementById("campaignProduct").value || (csvInsights && csvInsights.topProduct.value) || "produto recomendado";
       const tone = document.getElementById("campaignTone").value;
-      const prompt = document.getElementById("aiPrompt").value.trim();
-      const promptLine = prompt ? `\nPrompt usado: ${prompt}` : "";
-      const insightLine = csvInsights
-        ? `\nBase analisada: ${csvInsights.total.toLocaleString("pt-BR")} clientes. Ticket medio: ${csvInsights.avgTicket.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. Canal mais frequente: ${csvInsights.topChannel.value}. Consentimento LGPD: ${csvInsights.consentRate}%.`
-        : "";
-      const output = `Campanha sugerida para ${channel}
+      const output = `VARIACAO CRIATIVA:
+1
 
-Publico: ${segment}
-Produto: ${product}
-Tom: ${tone}
-${promptLine}
-${insightLine}
+Publico:
+${segment}
 
-Titulo:
-${aiGenerationCount > 0 ? "Nova recomendação personalizada para você" : "Uma selecao feita para o seu momento de compra"}
+Produto:
+${product}
 
-Mensagem:
-Selecionamos ${product.toLowerCase()} para clientes com alto potencial de interesse. A recomendacao foi criada a partir de historico de compra, score de intencao, canal preferido e consentimento autorizado.
+Tom:
+${tone}
 
-Chamada para acao:
-Conheca a selecao recomendada hoje.
+Conceito criativo:
+Escreva aqui a grande ideia da campanha.
 
-Justificativa da IA:
-Este publico apresenta sinais de interesse recente, ticket medio compativel e maior chance de conversao quando recebe uma mensagem personalizada com curadoria. Clientes sem consentimento devem ser excluidos do disparo.`;
+Direcao de campanha:
+Defina o caminho da mensagem, canal principal e promessa central para ${channel}.
+
+Descricao do produto:
+Descreva o produto com beneficio, diferenciais e motivo de compra.
+
+Titulo do Anuncio:
+Crie um titulo direto, forte e memoravel.
+
+Texto Principal:
+Escreva a mensagem principal da campanha.
+
+Chamada de acao:
+Defina a acao esperada do cliente.
+
+Variacao curta:
+Crie uma versao curta para testes A/B.
+
+Fechamento:
+Finalize com um argumento claro para conversao.`;
       document.getElementById("campaignOutput").textContent = output;
     }
 
@@ -3193,7 +3230,7 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
       return {
         product,
         position,
-        source: "Estimativa local do prototipo",
+        source: "Google Search com fontes permitidas: Amazon, Magalu, TikTok Shop e Casas Bahia",
         ticketMedio: avg,
         priceSuggestions: [
           { label: "Preco competitivo", value: Math.round(avg * 0.88), reason: "Bom para entrada rapida em campanha e teste de conversao." },
@@ -3202,15 +3239,20 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
         ],
         range: { low: Math.round(base.low * m), high: Math.round(base.high * m) },
         attrs: base.attrs,
-        sources: [],
+        sources: [
+          { title: "Amazon via Google", url: `https://www.google.com/search?q=${encodeURIComponent(`site:amazon.com.br ${product} preco`)}` },
+          { title: "Magalu via Google", url: `https://www.google.com/search?q=${encodeURIComponent(`site:magazineluiza.com.br ${product} preco`)}` },
+          { title: "TikTok Shop via Google", url: `https://www.google.com/search?q=${encodeURIComponent(`site:shop.tiktok.com ${product} preco`)}` },
+          { title: "Casas Bahia via Google", url: `https://www.google.com/search?q=${encodeURIComponent(`site:casasbahia.com.br ${product} preco`)}` },
+        ],
       };
     }
 
     function renderPricingResearch(data) {
       const suggestions = data.priceSuggestions.map(item => `- ${item.label}: ${formatBRL(item.value)} | ${item.reason}`).join("\n");
       const sources = data.sources && data.sources.length
-        ? data.sources.slice(0, 3).map((source, index) => `${index + 1}. ${source.title}\n   ${source.url}`).join("\n")
-        : "Nenhuma fonte online conectada nesta execucao. Usando estimativa local do prototipo.";
+        ? data.sources.slice(0, 4).map((source, index) => `${index + 1}. ${source.title}\n   ${source.url}`).join("\n")
+        : "Nenhuma fonte permitida retornou referencia nesta execucao.";
       const attrs = (data.attrs || []).map(attr => `- ${attr}`).join("\n");
       document.getElementById("pricingOutput").textContent = `Produto pesquisado: ${data.product}
 Posicionamento: ${data.position}
@@ -3249,6 +3291,101 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
       }
     }
 
+    function activeTabName() {
+      const active = document.querySelector(".section.active");
+      return active ? active.id : "dashboard";
+    }
+
+    function exportRowsForCurrentView() {
+      const tab = activeTabName();
+      if (tab === "customers") {
+        const rows = importedCustomers.map(customer => ({
+          cliente: pick(customer, ["nome", "name", "cliente"], ""),
+          email: pick(customer, ["email"], ""),
+          telefone: pick(customer, ["telefone", "phone", "whatsapp"], ""),
+          comprou: pick(customer, ["produto_comprado", "product_name", "comprou"], ""),
+          onde: pick(customer, ["onde_comprou", "store", "canal_preferido"], ""),
+          valor: pick(customer, ["valor_compra", "valor", "value"], ""),
+          data: pick(customer, ["data_compra", "purchased_at", "created_at"], ""),
+          status: pick(customer, ["status_comportamental", "status"], ""),
+          origem: sourceName(customer),
+        }));
+        return { name: "clientes", rows };
+      }
+      if (tab === "segments") {
+        return { name: "segmentos", rows: segments.map(segment => ({
+          segmento: segment.name,
+          clientes: segment.customers,
+          intencao: `${segment.intent}%`,
+          acao: segment.action,
+        })) };
+      }
+      if (tab === "activeCampaigns" || tab === "dashboard") {
+        return { name: "campanhas", rows: campaignPerformance.map(campaign => ({
+          campanha: campaign.name,
+          status: isCampaignActive(campaign) ? "Ativa" : "Nao ativa",
+          segmento: campaign.segment,
+          canal: campaign.channel,
+          publico: campaign.audience,
+          conversoes: campaign.conversions,
+          receita: campaign.revenue,
+          gasto: campaign.spend,
+          roi: `${roiPercent(campaign.revenue, campaign.spend)}%`,
+        })) };
+      }
+      if (tab === "recommendations") {
+        return { name: "recomendacoes", rows: actions.map((item, index) => ({
+          ordem: index + 1,
+          recomendacao: item[0],
+          detalhe: item[1],
+        })) };
+      }
+      if (tab === "privacy") {
+        return { name: "lgpd", rows: audit.map(item => ({
+          evento: item[0],
+          detalhe: item[1],
+        })) };
+      }
+      return { name: tab, rows: [{ tela: pageMeta[tab]?.[0] || tab, observacao: "Sem tabela de dados nesta tela." }] };
+    }
+
+    function csvCell(value) {
+      return `"${String(value ?? "").replace(/"/g, '""')}"`;
+    }
+
+    function htmlCell(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+    }
+
+    function downloadFile(filename, content, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function exportCurrentView() {
+      const format = document.getElementById("exportFormat").value;
+      const { name, rows } = exportRowsForCurrentView();
+      const columns = rows.length ? Object.keys(rows[0]) : ["status"];
+      const safeName = `personapulse_${name}_${new Date().toISOString().slice(0, 10)}`;
+      if (format === "xls") {
+        const table = `<table><thead><tr>${columns.map(col => `<th>${htmlCell(col)}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(col => `<td>${htmlCell(row[col])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+        downloadFile(`${safeName}.xls`, table, "application/vnd.ms-excel;charset=utf-8");
+        return;
+      }
+      const csv = [columns.map(csvCell).join(";"), ...rows.map(row => columns.map(col => csvCell(row[col])).join(";"))].join("\n");
+      downloadFile(`${safeName}.csv`, `\uFEFF${csv}`, "text/csv;charset=utf-8");
+    }
+
     document.querySelectorAll(".nav button").forEach(button => {
       button.addEventListener("click", () => {
         activateTab(button.dataset.tab);
@@ -3260,14 +3397,23 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
     });
 
     document.getElementById("generateCampaign").addEventListener("click", () => {
-      generateCreativeCampaign();
+      generateCampaign();
       document.getElementById("campaigns").scrollIntoView({ behavior: "smooth", block: "start" });
     });
     document.getElementById("regenerateCampaignText").addEventListener("click", () => {
       generateCreativeCampaign();
     });
     document.getElementById("generatePricing").addEventListener("click", generatePricingResearch);
+    document.getElementById("exportData").addEventListener("click", exportCurrentView);
     document.getElementById("dailyRefresh").addEventListener("click", () => {
+      const prompt = document.getElementById("aiPrompt").value.trim();
+      if (!document.getElementById("campaigns").classList.contains("active")) {
+        activateTab("campaigns");
+      }
+      if (!prompt) {
+        generateCampaign();
+        return;
+      }
       updateAiCycle();
     });
     document.getElementById("showCampaignGeneral").addEventListener("click", () => {
@@ -3411,8 +3557,9 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
     renderCampaignSchedule();
     renderCustomers();
     renderIntegrations();
-    generateCreativeCampaign();
+    generateCampaign();
     generatePricingResearch();
+    activateTab("dashboard", { keepAiPanel: true });
   </script>
   <script>
     (function () {

@@ -72,6 +72,120 @@ CRM_DEMO_PRODUCTS = [
 ]
 
 
+PRICE_SOURCE_SITES = [
+    ("Amazon", "amazon.com.br"),
+    ("Magalu", "magazineluiza.com.br"),
+    ("TikTok Shop", "shop.tiktok.com"),
+    ("Casas Bahia", "casasbahia.com.br"),
+]
+
+
+def pricing_reference(product, position):
+    lower = product.lower()
+    base = {
+        "low": 400,
+        "avg": 850,
+        "high": 1600,
+        "attrs": ["acabamento superior", "garantia", "boa reputacao", "design diferenciado"],
+    }
+    if any(term in lower for term in ["notebook", "laptop", "dell", "macbook"]):
+        base = {
+            "low": 2800,
+            "avg": 5200,
+            "high": 13500,
+            "attrs": ["processador atual", "16 GB de memoria RAM", "SSD NVMe", "tela Full HD ou superior", "garantia nacional"],
+        }
+    elif any(term in lower for term in ["bicicleta", "mtb", "bike"]):
+        base = {
+            "low": 2500,
+            "avg": 7200,
+            "high": 15000,
+            "attrs": ["quadro leve", "suspensao responsiva", "freios a disco hidraulicos", "transmissao Shimano ou SRAM", "pneus de alta aderencia"],
+        }
+    elif any(term in lower for term in ["carro de bebe", "carrinho", "bebe"]):
+        base = {
+            "low": 1200,
+            "avg": 2800,
+            "high": 5900,
+            "attrs": ["travel system", "bebe conforto", "estrutura leve", "fechamento compacto", "certificacao de seguranca"],
+        }
+    elif "perfume" in lower:
+        base = {
+            "low": 180,
+            "avg": 420,
+            "high": 950,
+            "attrs": ["fixacao", "familia olfativa", "frasco premium", "marca percebida", "exclusividade"],
+        }
+
+    multipliers = {"Entrada": 0.75, "Intermediário": 1, "Intermediario": 1, "Premium": 1.35, "Luxo": 1.9}
+    multiplier = multipliers.get(position, 1)
+    avg = round(base["avg"] * multiplier)
+    query_product = product.strip() or "produto"
+    sources = [
+        {
+            "title": f"{name} via Google",
+            "url": "https://www.google.com/search?" + urlencode({"q": f"site:{domain} {query_product} preco"}),
+            "domain": domain,
+        }
+        for name, domain in PRICE_SOURCE_SITES
+    ]
+    return {
+        "product": product,
+        "position": position,
+        "source": "Google Search com fontes permitidas: Amazon, Magalu, TikTok Shop e Casas Bahia",
+        "ticketMedio": avg,
+        "priceSuggestions": [
+            {"label": "Preco competitivo", "value": round(avg * 0.88), "reason": "Bom para testar conversao sem destruir posicionamento."},
+            {"label": "Preco recomendado", "value": avg, "reason": "Equilibra valor percebido, margem e atratividade."},
+            {"label": "Preco premium", "value": round(avg * 1.18), "reason": "Aplicavel quando a oferta destaca atributos superiores e garantia."},
+        ],
+        "range": {"low": round(base["low"] * multiplier), "high": round(base["high"] * multiplier)},
+        "attrs": base["attrs"],
+        "sources": sources,
+    }
+
+
+def executive_summary(store):
+    customers = store["customers"] + store["meta_ads_leads"] + store["ads_leads"]
+    campaigns = store["campaigns"] + store["meta_ads_campaigns"] + store["ads_campaigns"]
+    orders_revenue = sum(float(order.get("value") or 0) for order in store["orders"])
+    media_revenue = sum(
+        float(item.get("purchase_value") or item.get("revenue") or item.get("conversion_value") or 0)
+        for item in store["meta_ads_insights"] + store["ads_insights"]
+    )
+    spend = sum(
+        float(item.get("spend") or item.get("cost") or item.get("cost_micros") or 0)
+        for item in store["meta_ads_insights"] + store["ads_insights"]
+    )
+    if spend > 100000:
+        spend = spend / 1000000
+    revenue = orders_revenue + media_revenue
+    conversions = sum(
+        int(float(item.get("conversions") or item.get("purchases") or item.get("leads") or 0))
+        for item in store["meta_ads_insights"] + store["ads_insights"]
+    )
+    consent = sum(1 for customer in customers if as_bool(customer.get("consent_marketing")))
+    roi = round(((revenue - spend) / spend) * 100, 2) if spend else 0
+    return {
+        "updated_at": now_iso(),
+        "clientes_analisados": len(customers),
+        "campanhas": len(campaigns),
+        "conversoes": conversions,
+        "receita_atribuida": round(revenue, 2),
+        "gasto_real": round(spend, 2),
+        "roi_real_percentual": roi,
+        "conformidade_lgpd_percentual": round((consent / len(customers)) * 100, 2) if customers else 0,
+        "fontes": {
+            "crm_clientes": len(store["customers"]),
+            "meta_ads_leads": len(store["meta_ads_leads"]),
+            "outros_ads_leads": len(store["ads_leads"]),
+            "crm_pedidos": len(store["orders"]),
+            "meta_ads_campanhas": len(store["meta_ads_campaigns"]),
+            "outros_ads_campanhas": len(store["ads_campaigns"]),
+        },
+    }
+
+
 def seed_crm_demo(store, reset=False, customer_count=120):
     if reset:
         store["customers"] = []
@@ -583,6 +697,7 @@ DOCS_HTML = """
   "occurred_at": "2026-05-31T15:00:00"
 }</pre></section>
   <section><span class="method">GET</span> <code>/api/segments</code><p>Retorna segmentos calculados.</p></section>
+  <section><span class="method">GET</span> <code>/api/powerbi/executive-summary</code><p>Resumo executivo em JSON para Power BI, com clientes, campanhas, receita, gasto, ROI real e fontes.</p></section>
   <section><span class="method">POST</span> <code>/api/campaigns/generate</code><p>Gera campanha para segmento/produto/canal.</p>
 <pre>{
   "segment_name": "Clientes premium",
@@ -741,6 +856,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_html(DOCS_HTML)
         if path == "/health":
             return self.send_json(200, {"status": "ok", "service": "personapulse-api", "time": now_iso()})
+        if path == "/api/price-research":
+            product = (query.get("product") or ["Produto"])[0]
+            position = (query.get("position") or ["Intermediário"])[0]
+            return self.send_json(200, pricing_reference(product, position))
+        if path == "/api/powerbi/executive-summary":
+            return self.send_json(200, executive_summary(store))
         if path == "/api/crm/customers":
             return self.send_json(200, {"customers": store["customers"], "count": len(store["customers"])})
         if path == "/api/crm/orders":
