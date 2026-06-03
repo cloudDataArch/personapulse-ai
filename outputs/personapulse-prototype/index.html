@@ -2308,6 +2308,90 @@
       return pick(customer, ["origem_dados", "fonte_dados", "source_type"], "CSV");
     }
 
+    function buildPowerBiSnapshot() {
+      const insights = importedCustomers.length ? buildInsights(importedCustomers) : null;
+      const totalRevenue = campaignPerformance.reduce((sum, campaign) => sum + Number(campaign.revenue || 0), 0);
+      const totalSpend = campaignPerformance.reduce((sum, campaign) => sum + Number(campaign.cost || campaign.spend || 0), 0);
+      const totalConversions = campaignPerformance.reduce((sum, campaign) => sum + Number(campaign.conversions || 0), 0);
+      const counts = sourceCounts();
+      const consentRate = insights ? insights.consentRate : 0;
+      const customers = importedCustomers.map((customer, index) => ({
+        cliente_id: pick(customer, ["id", "cliente_id", "external_id", "lead_id"], `cliente_${index + 1}`),
+        nome: pick(customer, ["nome", "name", "cliente"], ""),
+        email: pick(customer, ["email"], ""),
+        telefone: pick(customer, ["telefone", "phone", "whatsapp"], ""),
+        cidade: pick(customer, ["cidade", "city"], ""),
+        origem: sourceName(customer),
+        produto: pick(customer, ["produto_comprado", "product_name", "comprou"], ""),
+        onde: pick(customer, ["onde_comprou", "store", "canal_preferido", "canal"], ""),
+        valor: parseMoney(pick(customer, ["valor_compra", "valor", "value", "ticket"], "0")),
+        data_compra: pick(customer, ["data_compra", "purchased_at", "created_at"], ""),
+        status: pick(customer, ["status_comportamental", "status"], ""),
+        score_intencao: customerScore(customer),
+        consentimento_marketing: isConsent(customer),
+      }));
+      const campaigns = campaignPerformance.map(campaign => ({
+        campanha_id: campaign.id,
+        campanha: campaign.name,
+        segmento: campaign.segment,
+        canal: campaign.channel,
+        status: isCampaignActive(campaign) ? "Ativa" : "Nao ativa",
+        publico: Number(campaign.audience || 0),
+        cliques: Number(campaign.clicks || 0),
+        conversoes: Number(campaign.conversions || 0),
+        receita: Number(campaign.revenue || 0),
+        gasto: Number(campaign.cost || campaign.spend || 0),
+        roi_percentual: roi(campaign.revenue || 0, campaign.cost || campaign.spend || 0),
+        roas: roas(campaign.revenue || 0, campaign.cost || campaign.spend || 0),
+      }));
+      const sources = [
+        { fonte: "CSV", clientes: counts.csv, campanhas: 0 },
+        { fonte: "CRM", clientes: counts.crm, campanhas: 0 },
+        { fonte: "Meta Ads", clientes: counts.metaAdsCustomers, campanhas: counts.metaAds },
+        { fonte: "Outros Ads", clientes: counts.externalAdsCustomers, campanhas: counts.externalAds },
+      ];
+      return {
+        summary: {
+          updated_at: new Date().toISOString(),
+          clientes_analisados: importedCustomers.length,
+          campanhas: campaignPerformance.length,
+          conversoes: totalConversions,
+          receita_atribuida: totalRevenue,
+          gasto_real: totalSpend,
+          roi_real_percentual: totalSpend ? Math.round(((totalRevenue - totalSpend) / totalSpend) * 100) : 0,
+          conformidade_lgpd_percentual: consentRate,
+          ticket_medio: insights ? Math.round(insights.avgTicket) : 0,
+          produto_mais_recorrente: insights ? insights.topProduct.value : "",
+          canal_mais_recorrente: insights ? insights.topChannel.value : "",
+          fontes: {
+            csv_clientes: counts.csv,
+            crm_clientes: counts.crm,
+            meta_ads_clientes: counts.metaAdsCustomers,
+            meta_ads_campanhas: counts.metaAds,
+            outros_ads_clientes: counts.externalAdsCustomers,
+            outros_ads_campanhas: counts.externalAds,
+          },
+        },
+        customers,
+        campaigns,
+        sources,
+      };
+    }
+
+    async function publishPowerBiSnapshot() {
+      try {
+        const response = await fetch(apiUrl("/api/powerbi/snapshot"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(buildPowerBiSnapshot()),
+        });
+        if (!response.ok) throw new Error("snapshot_failed");
+        audit.unshift(["Power BI atualizado", "Snapshot executivo publicado no backend do Render."]);
+      } catch (error) {
+        console.warn("Power BI snapshot not published", error);
+      }
+    }
+
     function refreshCombinedData(messageHtml = "") {
       importedCustomers = [...csvCustomers, ...crmCustomers, ...metaAdsCustomers, ...externalAdsCustomers];
       importedHeaders = importedCustomers.length
@@ -2331,6 +2415,7 @@
         renderCampaignPerformance("general");
         renderActiveCampaignCenter();
         renderCampaignSchedule();
+        publishPowerBiSnapshot();
         return;
       }
 
@@ -2346,6 +2431,7 @@
       renderCampaignPerformance("general");
       renderActiveCampaignCenter();
       renderCampaignSchedule();
+      publishPowerBiSnapshot();
     }
 
     function rowToObject(headers, row) {

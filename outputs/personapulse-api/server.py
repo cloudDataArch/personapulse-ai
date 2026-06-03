@@ -57,6 +57,7 @@ def empty_store():
         "connector_configs": {},
         "recommendations": [],
         "audit_logs": [],
+        "powerbi_snapshot": {},
     }
 
 
@@ -146,6 +147,11 @@ def pricing_reference(product, position):
 
 
 def executive_summary(store):
+    snapshot = store.get("powerbi_snapshot") or {}
+    summary = snapshot.get("summary") or {}
+    if summary:
+        return {**summary, "updated_at": snapshot.get("updated_at") or summary.get("updated_at") or now_iso()}
+
     customers = store["customers"] + store["meta_ads_leads"] + store["ads_leads"]
     campaigns = store["campaigns"] + store["meta_ads_campaigns"] + store["ads_campaigns"]
     orders_revenue = sum(float(order.get("value") or 0) for order in store["orders"])
@@ -184,6 +190,62 @@ def executive_summary(store):
             "outros_ads_campanhas": len(store["ads_campaigns"]),
         },
     }
+
+
+def powerbi_customers(store):
+    snapshot = store.get("powerbi_snapshot") or {}
+    customers = snapshot.get("customers")
+    if isinstance(customers, list):
+        return customers
+    rows = []
+    orders_by_customer = {}
+    for order in store["orders"]:
+        orders_by_customer.setdefault(order.get("external_customer_id"), []).append(order)
+    for customer in store["customers"]:
+        customer_orders = orders_by_customer.get(customer.get("external_id"), [])
+        last_order = customer_orders[-1] if customer_orders else {}
+        rows.append({
+            "cliente_id": customer.get("external_id"),
+            "nome": customer.get("name"),
+            "email": customer.get("email"),
+            "telefone": customer.get("phone"),
+            "cidade": customer.get("city"),
+            "origem": customer.get("source", "CRM"),
+            "consentimento_marketing": as_bool(customer.get("consent_marketing")),
+            "produto": last_order.get("product_name", ""),
+            "valor": float(last_order.get("value") or 0),
+            "data_compra": last_order.get("purchased_at", ""),
+        })
+    return rows
+
+
+def powerbi_campaigns(store):
+    snapshot = store.get("powerbi_snapshot") or {}
+    campaigns = snapshot.get("campaigns")
+    if isinstance(campaigns, list):
+        return campaigns
+    rows = []
+    for campaign in store["campaigns"] + store["meta_ads_campaigns"] + store["ads_campaigns"]:
+        rows.append({
+            "campanha_id": campaign.get("id") or campaign.get("campaign_id"),
+            "campanha": campaign.get("name") or campaign.get("campaign_name") or campaign.get("title"),
+            "fonte": campaign.get("source") or ("Meta Ads" if campaign in store["meta_ads_campaigns"] else "PersonaPulse"),
+            "status": campaign.get("status", ""),
+            "canal": campaign.get("channel", ""),
+            "data_inicio": campaign.get("start_date") or campaign.get("date_start") or "",
+            "data_fim": campaign.get("end_date") or campaign.get("date_stop") or "",
+        })
+    return rows
+
+
+def powerbi_sources(store):
+    snapshot = store.get("powerbi_snapshot") or {}
+    sources = snapshot.get("sources")
+    if isinstance(sources, list):
+        return sources
+    summary = executive_summary(store)
+    fontes = summary.get("fontes", {})
+    return [{"fonte": key, "quantidade": value} for key, value in fontes.items()]
 
 
 def seed_crm_demo(store, reset=False, customer_count=120):
@@ -698,6 +760,10 @@ DOCS_HTML = """
 }</pre></section>
   <section><span class="method">GET</span> <code>/api/segments</code><p>Retorna segmentos calculados.</p></section>
   <section><span class="method">GET</span> <code>/api/powerbi/executive-summary</code><p>Resumo executivo em JSON para Power BI, com clientes, campanhas, receita, gasto, ROI real e fontes.</p></section>
+  <section><span class="method">GET</span> <code>/api/powerbi/customers</code><p>Tabela de clientes analisados para Power BI.</p></section>
+  <section><span class="method">GET</span> <code>/api/powerbi/campaigns</code><p>Tabela de campanhas e métricas para Power BI.</p></section>
+  <section><span class="method">GET</span> <code>/api/powerbi/sources</code><p>Tabela de fontes de dados para Power BI.</p></section>
+  <section><span class="method">POST</span> <code>/api/powerbi/snapshot</code><p>Recebe a fotografia consolidada do front para alimentar o dashboard executivo.</p></section>
   <section><span class="method">POST</span> <code>/api/campaigns/generate</code><p>Gera campanha para segmento/produto/canal.</p>
 <pre>{
   "segment_name": "Clientes premium",
@@ -862,6 +928,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, pricing_reference(product, position))
         if path == "/api/powerbi/executive-summary":
             return self.send_json(200, executive_summary(store))
+        if path == "/api/powerbi/customers":
+            rows = powerbi_customers(store)
+            return self.send_json(200, {"customers": rows, "count": len(rows), "updated_at": (store.get("powerbi_snapshot") or {}).get("updated_at")})
+        if path == "/api/powerbi/campaigns":
+            rows = powerbi_campaigns(store)
+            return self.send_json(200, {"campaigns": rows, "count": len(rows), "updated_at": (store.get("powerbi_snapshot") or {}).get("updated_at")})
+        if path == "/api/powerbi/sources":
+            rows = powerbi_sources(store)
+            return self.send_json(200, {"sources": rows, "count": len(rows), "updated_at": (store.get("powerbi_snapshot") or {}).get("updated_at")})
         if path == "/api/crm/customers":
             return self.send_json(200, {"customers": store["customers"], "count": len(store["customers"])})
         if path == "/api/crm/orders":
@@ -1009,6 +1084,29 @@ class Handler(BaseHTTPRequestHandler):
                     "customers_data": store["customers"],
                     "orders_data": store["orders"],
                     "events_data": store["events"],
+                })
+
+            if path == "/api/powerbi/snapshot":
+                snapshot = {
+                    "updated_at": now_iso(),
+                    "summary": payload.get("summary") or {},
+                    "customers": payload.get("customers") or [],
+                    "campaigns": payload.get("campaigns") or [],
+                    "sources": payload.get("sources") or [],
+                }
+                store["powerbi_snapshot"] = snapshot
+                add_audit(store, "powerbi_snapshot_received", {
+                    "customers": len(snapshot["customers"]),
+                    "campaigns": len(snapshot["campaigns"]),
+                    "sources": len(snapshot["sources"]),
+                })
+                save_store(store)
+                return self.send_json(200, {
+                    "status": "saved",
+                    "updated_at": snapshot["updated_at"],
+                    "customers": len(snapshot["customers"]),
+                    "campaigns": len(snapshot["campaigns"]),
+                    "sources": len(snapshot["sources"]),
                 })
 
             if path == "/api/campaigns/generate":
