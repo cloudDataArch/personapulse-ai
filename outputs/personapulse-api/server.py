@@ -146,11 +146,45 @@ def pricing_reference(product, position):
     }
 
 
+def powerbi_summary_defaults():
+    return {
+        "updated_at": now_iso(),
+        "clientes_analisados": 0,
+        "campanhas": 0,
+        "conversoes": 0,
+        "receita_atribuida": 0,
+        "gasto_real": 0,
+        "roi_real_percentual": 0,
+        "conformidade_lgpd_percentual": 0,
+        "ticket_medio": 0,
+        "produto_mais_recorrente": "",
+        "canal_mais_recorrente": "",
+        "fontes": {
+            "csv_clientes": 0,
+            "crm_clientes": 0,
+            "meta_ads_clientes": 0,
+            "meta_ads_leads": 0,
+            "outros_ads_clientes": 0,
+            "outros_ads_leads": 0,
+            "crm_pedidos": 0,
+            "meta_ads_campanhas": 0,
+            "outros_ads_campanhas": 0,
+        },
+    }
+
+
 def executive_summary(store):
     snapshot = store.get("powerbi_snapshot") or {}
     summary = snapshot.get("summary") or {}
     if summary:
-        return {**summary, "updated_at": snapshot.get("updated_at") or summary.get("updated_at") or now_iso()}
+        defaults = powerbi_summary_defaults()
+        fontes = {**defaults["fontes"], **(summary.get("fontes") or {})}
+        return {
+            **defaults,
+            **summary,
+            "fontes": fontes,
+            "updated_at": snapshot.get("updated_at") or summary.get("updated_at") or now_iso(),
+        }
 
     customers = store["customers"] + store["meta_ads_leads"] + store["ads_leads"]
     campaigns = store["campaigns"] + store["meta_ads_campaigns"] + store["ads_campaigns"]
@@ -172,8 +206,8 @@ def executive_summary(store):
     )
     consent = sum(1 for customer in customers if as_bool(customer.get("consent_marketing")))
     roi = round(((revenue - spend) / spend) * 100, 2) if spend else 0
-    return {
-        "updated_at": now_iso(),
+    summary = powerbi_summary_defaults()
+    summary.update({
         "clientes_analisados": len(customers),
         "campanhas": len(campaigns),
         "conversoes": conversions,
@@ -182,6 +216,7 @@ def executive_summary(store):
         "roi_real_percentual": roi,
         "conformidade_lgpd_percentual": round((consent / len(customers)) * 100, 2) if customers else 0,
         "fontes": {
+            **summary["fontes"],
             "crm_clientes": len(store["customers"]),
             "meta_ads_leads": len(store["meta_ads_leads"]),
             "outros_ads_leads": len(store["ads_leads"]),
@@ -189,7 +224,8 @@ def executive_summary(store):
             "meta_ads_campanhas": len(store["meta_ads_campaigns"]),
             "outros_ads_campanhas": len(store["ads_campaigns"]),
         },
-    }
+    })
+    return summary
 
 
 def powerbi_customers(store):
