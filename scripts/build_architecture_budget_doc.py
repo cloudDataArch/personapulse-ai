@@ -4,9 +4,11 @@ from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
+from pathlib import Path
 
 
-OUTPUT = r"C:\Users\Celio\Documents\Codex\2026-05-31\eu-quero-ajuda-para-criar-uma\outputs\PersonaPulse_AI_Arquitetura_Equipe_Custos_Prototipo.docx"
+ROOT = Path(__file__).resolve().parents[1]
+OUTPUT = ROOT / "DOCUMENTOS" / "PersonaPulse_AI_Arquitetura_Equipe_Custos_Prototipo.docx"
 
 BLUE = "2E74B5"
 DARK_BLUE = "1F4D78"

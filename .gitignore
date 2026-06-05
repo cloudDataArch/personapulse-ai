@@ -4,7 +4,7 @@ __pycache__/
 *.log
 
 # Dados locais e tokens de desenvolvimento
-outputs/personapulse-api/data/
+APIS/personapulse-api/data/
 
 # Artefatos compilados locais
 *.class

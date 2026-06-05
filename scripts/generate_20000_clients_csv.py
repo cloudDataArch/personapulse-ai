@@ -4,7 +4,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 
-OUTPUT = Path(r"C:\Users\Celio\Documents\Codex\2026-05-31\eu-quero-ajuda-para-criar-uma\outputs\personapulse_clientes_20000_diversos.csv")
+ROOT = Path(__file__).resolve().parents[1]
+OUTPUT = ROOT / "CSV" / "personapulse_clientes_20000_diversos.csv"
 random.seed(4317)
 
 first_names = [

@@ -3,7 +3,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 
-OUTPUT = Path(r"C:\Users\Celio\Documents\Codex\2026-05-31\eu-quero-ajuda-para-criar-uma\outputs\personapulse_clientes_demo.csv")
+ROOT = Path(__file__).resolve().parents[1]
+OUTPUT = ROOT / "CSV" / "personapulse_clientes_demo.csv"
 
 first_names = [
     "Ana", "Carlos", "Mariana", "Joao", "Beatriz", "Rafael", "Camila", "Lucas", "Juliana", "Felipe",

@@ -4,11 +4,16 @@ Prototipo navegavel do PersonaPulse AI com dashboard, clientes, campanhas, pesqu
 
 ## Estrutura
 
-- `outputs/personapulse-prototype/index.html`: frontend navegavel do MVP.
-- `outputs/personapulse-api/static/personapulse/index.html`: frontend publicado junto da API.
-- `outputs/personapulse-api/server.py`: API Python para CRM, Ads, OAuth, Power BI e sincronizacao.
-- `outputs/personapulse-api/README.md`: referencia de endpoints da API.
-- `outputs/personapulse-api/RENDER_DEPLOY.md`: guia de deploy no Render.
+- `APIS/personapulse-api/server.py`: API Python para CRM, Ads, OAuth, Power BI e sincronizacao.
+- `APIS/personapulse-api/static/personapulse/index.html`: frontend publicado junto da API.
+- `APIS/personapulse-api/README.md`: referencia de endpoints da API.
+- `APIS/personapulse-api/RENDER_DEPLOY.md`: guia de deploy no Render.
+- `interfaces.HTML/personapulse-prototype/index.html`: frontend navegavel do MVP.
+- `interfaces.PNG/`: imagens de interface, previews, organograma e campanha.
+- `JSON/`: exemplos de payloads JSON para API.
+- `CSV/`: bases demonstrativas de clientes.
+- `DOCUMENTOS/`: arquivos DOCX de arquitetura, organograma, comparativo e roteiro.
+- `scripts/`: scripts usados para gerar documentos, CSVs, imagens e utilitarios.
 - `docs/DESENVOLVIMENTO_TECNICO.md`: documentacao tecnica de desenvolvimento.
 - `docs/ORGANOGRAMA_PROJETO.md`: organograma visual e hierarquico do projeto.
 - `render.yaml`: blueprint para deploy no Render.
@@ -26,7 +31,7 @@ Prototipo navegavel do PersonaPulse AI com dashboard, clientes, campanhas, pesqu
 ## Rodar localmente
 
 ```powershell
-cd outputs/personapulse-api
+cd APIS/personapulse-api
 python server.py
 ```
 
@@ -39,14 +44,14 @@ http://127.0.0.1:8088/docs
 Frontend local:
 
 ```text
-outputs/personapulse-prototype/index.html
+interfaces.HTML/personapulse-prototype/index.html
 ```
 
 ## Deploy no Render
 
 Use o blueprint `render.yaml` ou crie um Web Service manualmente:
 
-- Root Directory: `outputs/personapulse-api`
+- Root Directory: `APIS/personapulse-api`
 - Build Command: `pip install -r requirements.txt`
 - Start Command: `python server.py`
 - Health Check Path: `/health`

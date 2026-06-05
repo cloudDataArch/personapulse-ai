@@ -3,11 +3,13 @@ from textwrap import wrap
 from PIL import Image, ImageDraw, ImageFont
 from docx import Document
 from docx.shared import Inches, Pt
+from pathlib import Path
 
 
-BASE_DOC = r"C:\Users\Celio\Documents\Codex\2026-05-31\eu-quero-ajuda-para-criar-uma\outputs\PersonaPulse_AI_Organograma_Etapas_MVP.docx"
-OUTPUT_DOC = r"C:\Users\Celio\Documents\Codex\2026-05-31\eu-quero-ajuda-para-criar-uma\outputs\PersonaPulse_AI_Organograma_Etapas_MVP_atualizado_v2.docx"
-ORG_IMAGE = r"C:\Users\Celio\Documents\Codex\2026-05-31\eu-quero-ajuda-para-criar-uma\work\organograma_personapulse.png"
+ROOT = Path(__file__).resolve().parents[1]
+BASE_DOC = ROOT / "DOCUMENTOS" / "PersonaPulse_AI_Organograma_Etapas_MVP.docx"
+OUTPUT_DOC = ROOT / "DOCUMENTOS" / "PersonaPulse_AI_Organograma_Etapas_MVP_atualizado_v2.docx"
+ORG_IMAGE = ROOT / "interfaces.PNG" / "organograma_personapulse.png"
 
 
 INK = "#0B2545"

@@ -21,12 +21,16 @@ flowchart LR
 
 ## Principais componentes
 
-- Frontend navegavel: `outputs/personapulse-prototype/index.html`
-- Frontend publicado no Render: `outputs/personapulse-api/static/personapulse/index.html`
-- Backend/API: `outputs/personapulse-api/server.py`
+- Frontend navegavel: `interfaces.HTML/personapulse-prototype/index.html`
+- Frontend publicado no Render: `APIS/personapulse-api/static/personapulse/index.html`
+- Backend/API: `APIS/personapulse-api/server.py`
 - Configuracao Render: `render.yaml`
-- Documentacao da API: `outputs/personapulse-api/README.md`
-- Documentos de produto/organograma: arquivos `.docx` dentro de `outputs/`
+- Documentacao da API: `APIS/personapulse-api/README.md`
+- Documentos de produto/organograma: arquivos `.docx` dentro de `DOCUMENTOS/`
+- Imagens de interface: `interfaces.PNG/`
+- Exemplos JSON: `JSON/`
+- Bases CSV: `CSV/`
+- Scripts de geracao e apoio: `scripts/`
 
 ## URLs publicas
 
@@ -129,7 +133,7 @@ Entidades sugeridas para o banco:
 ## Como rodar localmente
 
 ```powershell
-cd outputs/personapulse-api
+cd APIS/personapulse-api
 python server.py
 ```
 
@@ -146,4 +150,3 @@ O deploy atual usa Render com:
 - Build Command: `pip install -r requirements.txt`
 - Start Command: `python server.py`
 - Health Check Path: `/health`
-
