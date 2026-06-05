@@ -31,6 +31,7 @@ flowchart LR
 - Exemplos JSON: `JSON/`
 - Bases CSV: `CSV/`
 - Scripts de geracao e apoio: `scripts/`
+- Guia PostgreSQL: `docs/BANCO_POSTGRESQL.md`
 
 ## URLs publicas
 
@@ -107,7 +108,12 @@ O endpoint `executive-summary` deve manter schema estavel, mesmo sem dados, para
 
 ## Persistencia atual e proximo passo
 
-Hoje a API usa arquivo JSON local do servico como persistencia inicial. O proximo marco tecnico e migrar para PostgreSQL.
+Hoje a API possui persistencia hibrida:
+
+- usa PostgreSQL quando a variavel `DATABASE_URL` esta configurada;
+- usa JSON local quando `DATABASE_URL` nao existe, para desenvolvimento.
+
+O schema inicial esta em `APIS/personapulse-api/migrations/001_app_store_postgresql.sql`.
 
 Entidades sugeridas para o banco:
 

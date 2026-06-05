@@ -10,15 +10,24 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+    from psycopg.types.json import Jsonb
+except ImportError:
+    psycopg = None
+
 
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8088"))
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 STORE_FILE = DATA_DIR / "store.json"
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 API_VERSION = "v20.0"
 ASSETS_DIR = BASE_DIR / "assets"
 APP_DIR = BASE_DIR / "static" / "personapulse"
+STORE_KEY = "default"
 
 
 CONNECTOR_PROVIDERS = {
@@ -366,10 +375,73 @@ def seed_crm_demo(store, reset=False, customer_count=120):
     }
 
 
-def load_store():
+def using_postgres():
+    return bool(DATABASE_URL)
+
+
+def postgres_connection():
+    if psycopg is None:
+        raise RuntimeError("DATABASE_URL foi configurado, mas psycopg[binary] nao esta instalado.")
+    return psycopg.connect(DATABASE_URL)
+
+
+def ensure_postgres_schema():
+    with postgres_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS app_store (
+                    key TEXT PRIMARY KEY,
+                    payload JSONB NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS app_audit (
+                    id UUID PRIMARY KEY,
+                    action TEXT NOT NULL,
+                    details JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+            """)
+        conn.commit()
+
+
+def load_store_from_postgres():
+    ensure_postgres_schema()
+    with postgres_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT payload FROM app_store WHERE key = %s", (STORE_KEY,))
+            row = cur.fetchone()
+            if not row:
+                store = empty_store()
+                save_store_to_postgres(store)
+                return store
+            store = row["payload"]
+    for key, value in empty_store().items():
+        store.setdefault(key, value)
+    return store
+
+
+def save_store_to_postgres(store):
+    ensure_postgres_schema()
+    with postgres_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO app_store (key, payload, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (key)
+                DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+                """,
+                (STORE_KEY, Jsonb(store)),
+            )
+        conn.commit()
+
+
+def load_store_from_json():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if not STORE_FILE.exists():
-        save_store(empty_store())
+        save_store_to_json(empty_store())
     with STORE_FILE.open("r", encoding="utf-8") as f:
         store = json.load(f)
     for key, value in empty_store().items():
@@ -377,19 +449,47 @@ def load_store():
     return store
 
 
-def save_store(store):
+def save_store_to_json(store):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with STORE_FILE.open("w", encoding="utf-8") as f:
         json.dump(store, f, ensure_ascii=False, indent=2)
 
 
+def load_store():
+    if using_postgres():
+        return load_store_from_postgres()
+    return load_store_from_json()
+
+
+def save_store(store):
+    if using_postgres():
+        return save_store_to_postgres(store)
+    return save_store_to_json(store)
+
+
 def add_audit(store, action, details):
-    store["audit_logs"].insert(0, {
+    entry = {
         "id": str(uuid.uuid4()),
         "action": action,
         "details": details,
         "created_at": now_iso(),
-    })
+    }
+    store["audit_logs"].insert(0, entry)
+    if using_postgres():
+        try:
+            ensure_postgres_schema()
+            with postgres_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO app_audit (id, action, details, created_at)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (entry["id"], action, Jsonb(details), entry["created_at"]),
+                    )
+                conn.commit()
+        except Exception:
+            pass
 
 
 def read_json(handler):
@@ -957,7 +1057,12 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/docs":
             return self.send_html(DOCS_HTML)
         if path == "/health":
-            return self.send_json(200, {"status": "ok", "service": "personapulse-api", "time": now_iso()})
+            return self.send_json(200, {
+                "status": "ok",
+                "service": "personapulse-api",
+                "persistence": "postgresql" if using_postgres() else "json",
+                "time": now_iso(),
+            })
         if path == "/api/price-research":
             product = (query.get("product") or ["Produto"])[0]
             position = (query.get("position") or ["Intermediário"])[0]

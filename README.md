@@ -16,6 +16,7 @@ Prototipo navegavel do PersonaPulse AI com dashboard, clientes, campanhas, pesqu
 - `scripts/`: scripts usados para gerar documentos, CSVs, imagens e utilitarios.
 - `docs/DESENVOLVIMENTO_TECNICO.md`: documentacao tecnica de desenvolvimento.
 - `docs/ORGANOGRAMA_PROJETO.md`: organograma visual e hierarquico do projeto.
+- `docs/BANCO_POSTGRESQL.md`: guia de persistencia PostgreSQL.
 - `render.yaml`: blueprint para deploy no Render.
 
 ## URLs publicas
@@ -58,4 +59,4 @@ Use o blueprint `render.yaml` ou crie um Web Service manualmente:
 
 ## Proximo marco tecnico
 
-Migrar a persistencia atual em JSON para PostgreSQL, mantendo compatibilidade com o frontend, CRM, Ads e Power BI.
+Configurar `DATABASE_URL` no Render e validar a persistencia PostgreSQL com CRM, Ads e Power BI.

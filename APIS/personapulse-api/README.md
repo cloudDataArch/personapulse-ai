@@ -81,4 +81,13 @@ python .\ads_multi_simulator.py
 
 ## Persistencia
 
-Esta primeira versao salva os dados em `data/store.json`. O proximo marco tecnico e trocar a persistencia para PostgreSQL.
+Esta versao usa persistencia hibrida:
+
+- PostgreSQL quando `DATABASE_URL` estiver configurada;
+- JSON local em `data/store.json` quando `DATABASE_URL` nao estiver configurada.
+
+Schema SQL:
+
+```text
+migrations/001_app_store_postgresql.sql
+```

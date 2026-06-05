@@ -8,3 +8,6 @@ services:
     startCommand: python server.py
     healthCheckPath: /health
     autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false
