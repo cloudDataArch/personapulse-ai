@@ -1675,67 +1675,6 @@ DOCS_HTML = """
 """
 
 
-CITY_CLEAN_HTML = """
-<!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sua rua não é lixeira | Cidade limpa começa com você</title>
-  <meta name="description" content="Campanha de conscientização: descarte o lixo no lugar certo e ajude a manter a cidade limpa.">
-  <meta property="og:title" content="Sua rua não é lixeira">
-  <meta property="og:description" content="Descarte no lugar certo. Cidade limpa começa com você.">
-  <meta property="og:image" content="/assets/campanha-cidade-limpa-horizontal.png">
-  <style>
-    :root{--ink:#111827;--muted:#667085;--line:#d8dee8;--teal:#14b8a6;--blue:#2563eb;--bg:#f5f8fb}
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--ink)}
-    .hero{min-height:82vh;display:grid;align-items:end;background:linear-gradient(90deg,rgba(12,20,32,.78),rgba(12,20,32,.18)),url('/assets/campanha-cidade-limpa-horizontal.png') center/cover no-repeat;color:white}
-    .hero-inner{width:min(1120px,100%);padding:56px 24px;margin:0 auto}
-    h1{font-size:clamp(42px,7vw,86px);line-height:.96;margin:0 0 18px;letter-spacing:0;max-width:780px}
-    .lead{font-size:clamp(18px,2.4vw,28px);line-height:1.35;max-width:720px;margin:0 0 28px;color:#e5eef8}
-    .cta{display:inline-flex;align-items:center;min-height:50px;padding:0 20px;border-radius:8px;background:var(--teal);color:white;text-decoration:none;font-weight:800}
-    main{width:min(1120px,100%);margin:0 auto;padding:34px 24px 48px}
-    .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-    .card{background:white;border:1px solid var(--line);border-radius:8px;padding:20px;min-height:150px}
-    .card strong{display:block;font-size:18px;margin-bottom:8px}
-    .card p{margin:0;color:var(--muted);line-height:1.55}
-    .band{margin-top:18px;background:#102033;color:white;border-radius:8px;padding:24px;display:flex;justify-content:space-between;gap:20px;align-items:center;flex-wrap:wrap}
-    .band p{margin:4px 0 0;color:#d6e2ee}
-    footer{border-top:1px solid var(--line);padding:22px 24px;color:var(--muted);font-size:13px;text-align:center;background:white}
-    @media(max-width:760px){.hero{min-height:76vh}.grid{grid-template-columns:1fr}.band{align-items:flex-start}.hero-inner{padding-top:120px}}
-  </style>
-</head>
-<body>
-  <section class="hero">
-    <div class="hero-inner">
-      <h1>Sua rua não é lixeira.</h1>
-      <p class="lead">Cada embalagem descartada no chão volta para todos nós. Entope bueiros, suja a cidade e aumenta riscos de enchentes.</p>
-      <a class="cta" href="#faca-sua-parte">Faça sua parte hoje</a>
-    </div>
-  </section>
-  <main id="faca-sua-parte">
-    <div class="grid">
-      <article class="card"><strong>Guarde por alguns metros</strong><p>Se não houver lixeira por perto, leve o lixo com você até encontrar o descarte correto.</p></article>
-      <article class="card"><strong>Descarte no lugar certo</strong><p>Uma escolha pequena evita sujeira, mau cheiro, pragas urbanas e problemas para todos.</p></article>
-      <article class="card"><strong>Dê exemplo</strong><p>Quando uma pessoa cuida da rua, outras pessoas percebem. Cidade limpa também é comportamento coletivo.</p></article>
-    </div>
-    <section class="band">
-      <div>
-        <strong>Campanha Cidade Limpa</strong>
-        <p>Conscientização pública para reduzir lixo nas ruas e valorizar o espaço urbano.</p>
-      </div>
-      <a class="cta" href="/">Conheça o PersonaPulse AI</a>
-    </section>
-  </main>
-  <footer>
-    Página de campanha sem coleta de dados pessoais. PersonaPulse AI - campanha de conscientização.
-  </footer>
-</body>
-</html>
-"""
-
-
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return
@@ -1758,6 +1697,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+
+    def redirect(self, location):
+        self.send_response(302)
+        self.send_header("Location", location)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def send_file(self, file_path, content_type):
         if not file_path.exists() or not file_path.is_file():
@@ -1782,13 +1727,9 @@ class Handler(BaseHTTPRequestHandler):
         query = parse_qs(parsed_url.query)
         store = load_store()
         if path == "/":
-            return self.send_html(CITY_CLEAN_HTML)
+            return self.redirect("/app")
         if path in {"/app", "/app/"}:
             return self.send_file(APP_DIR / "index.html", "text/html; charset=utf-8")
-        if path == "/cidade-limpa":
-            return self.send_html(CITY_CLEAN_HTML)
-        if path == "/assets/campanha-cidade-limpa-horizontal.png":
-            return self.send_file(ASSETS_DIR / "campanha-cidade-limpa-horizontal.png", "image/png")
         if path == "/docs":
             return self.send_html(DOCS_HTML)
         if path == "/health":
