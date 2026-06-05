@@ -1,9 +1,0 @@
-{
-  "external_id": "crm_12345",
-  "name": "Ana Silva",
-  "email": "ana@email.com",
-  "phone": "+5511999999999",
-  "city": "Sao Paulo",
-  "consent_marketing": true,
-  "source": "hubspot"
-}
