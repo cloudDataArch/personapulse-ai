@@ -14,7 +14,7 @@
 Depois do deploy, o Render vai gerar uma URL parecida com:
 
 ```txt
-https://personapulse-api.onrender.com
+<URL_PUBLICA_DA_API>
 ```
 
 Use essa URL no PersonaPulse, no campo:
@@ -28,10 +28,10 @@ URL da API PersonaPulse
 No Meta Developers e no Google Cloud, cadastre:
 
 ```txt
-https://personapulse-api.onrender.com/api/oauth/callback
+<URL_PUBLICA_DA_API>/api/oauth/callback
 ```
 
-Troque `personapulse-api.onrender.com` pela URL real que o Render gerar.
+Troque `<URL_PUBLICA_DA_API_SEM_PROTOCOLO>` pela URL real que o Render gerar.
 
 ## Observacao importante
 

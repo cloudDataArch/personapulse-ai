@@ -6,7 +6,7 @@ import urllib.request
 from datetime import date, datetime, timedelta
 
 
-BASE_URL = os.environ.get("PERSONAPULSE_API_BASE_URL", "https://personapulse-ai.onrender.com").rstrip("/")
+BASE_URL = os.environ.get("PERSONAPULSE_API_BASE_URL", "http://127.0.0.1:8088").rstrip("/")
 random.seed(9126)
 
 

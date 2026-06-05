@@ -1549,12 +1549,12 @@
                     <input id="connectorLoginCustomerId" placeholder="Opcional: ID da conta gerente" />
                   </label>
                   <label>URL da API PersonaPulse
-                    <input id="connectorApiBaseUrl" readonly value="https://personapulse-ai.onrender.com" />
+                    <input id="connectorApiBaseUrl" readonly value="" />
                   </label>
                 </div>
                 <div style="height:12px"></div>
                 <div class="integration-meta">
-                  Redirect URI do protótipo: <strong id="connectorRedirectUriText">https://personapulse-ai.onrender.com/api/oauth/callback</strong><br>
+                  Redirect URI do protótipo: <strong id="connectorRedirectUriText"></strong><br>
                   Em produção, tokens e secrets ficam no backend, nunca no navegador.
                 </div>
                 <div id="connectorFeedback" class="notice" style="margin-top:12px"></div>
@@ -1709,7 +1709,9 @@
     let selectedCampaignIds = new Set();
     let activeCampaignDetailId = null;
     let selectedConnectorId = null;
-    const DEFAULT_API_BASE_URL = "https://personapulse-ai.onrender.com";
+    const DEFAULT_API_BASE_URL = window.location.protocol.startsWith("http")
+      ? window.location.origin
+      : "http://127.0.0.1:8088";
 
     function apiBaseUrl() {
       return DEFAULT_API_BASE_URL;
@@ -1822,7 +1824,7 @@
       { id: "snapchat", name: "Snapchat Ads", status: "Planejado", data: "Campanhas, ad squads, público jovem e stats de mídia", shortName: "Snap", scopes: "Snap OAuth + ad account + marketing stats permissions", docs: "https://developers.snap.com/api/marketing-api/" },
       { id: "amazon", name: "Amazon Ads", status: "Planejado", data: "Campanhas, ASINs, produtos, vendas atribuídas e ROAS", shortName: "Amazon", scopes: "Amazon Ads OAuth + profile_id + advertiser account", docs: "https://advertising.amazon.com/API" },
       { id: "mercadolivre", name: "Mercado Livre Ads", status: "Planejado", data: "Produtos, anúncios, vendas atribuídas e marketplace", shortName: "Mercado Livre", scopes: "OAuth Mercado Livre + seller/account + advertising endpoints", docs: "https://developers.mercadolivre.com.br/" },
-      { id: "crm", name: "CRM", status: "Conectado no simulador", data: "Clientes, pedidos, eventos e recomendações de volta", shortName: "CRM", scopes: "API key/webhook do CRM + endpoints de clientes, pedidos e eventos", docs: "https://personapulse-ai.onrender.com/docs" },
+      { id: "crm", name: "CRM", status: "Conectado no simulador", data: "Clientes, pedidos, eventos e recomendações de volta", shortName: "CRM", scopes: "API key/webhook do CRM + endpoints de clientes, pedidos e eventos", docs: "/docs" },
     ];
 
     function iconTag(label, color) {

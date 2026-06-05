@@ -35,9 +35,9 @@ flowchart LR
 
 ## URLs publicas
 
-- Aplicacao: `https://personapulse-ai.onrender.com/app`
-- API/docs: `https://personapulse-ai.onrender.com/docs`
-- Health check: `https://personapulse-ai.onrender.com/health`
+- Aplicacao: `<URL_PUBLICA_DA_API>/app`
+- API/docs: `<URL_PUBLICA_DA_API>/docs`
+- Health check: `<URL_PUBLICA_DA_API>/health`
 
 ## Fluxo de dados do MVP
 
@@ -93,10 +93,10 @@ flowchart LR
 
 No Power BI Desktop, usar `Obter dados > Web` e conectar os endpoints:
 
-- `https://personapulse-ai.onrender.com/api/powerbi/executive-summary`
-- `https://personapulse-ai.onrender.com/api/powerbi/customers`
-- `https://personapulse-ai.onrender.com/api/powerbi/campaigns`
-- `https://personapulse-ai.onrender.com/api/powerbi/sources`
+- `<URL_PUBLICA_DA_API>/api/powerbi/executive-summary`
+- `<URL_PUBLICA_DA_API>/api/powerbi/customers`
+- `<URL_PUBLICA_DA_API>/api/powerbi/campaigns`
+- `<URL_PUBLICA_DA_API>/api/powerbi/sources`
 
 Quando o Power BI mostrar campos do tipo `List` ou `Record`, expandir a lista correta:
 

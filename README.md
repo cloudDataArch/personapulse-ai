@@ -21,13 +21,15 @@ Prototipo navegavel do PersonaPulse AI com dashboard, clientes, campanhas, pesqu
 
 ## URLs publicas
 
-- Aplicacao: `https://personapulse-ai.onrender.com/app`
-- API/docs: `https://personapulse-ai.onrender.com/docs`
-- Health check: `https://personapulse-ai.onrender.com/health`
-- Power BI resumo: `https://personapulse-ai.onrender.com/api/powerbi/executive-summary`
-- Power BI clientes: `https://personapulse-ai.onrender.com/api/powerbi/customers`
-- Power BI campanhas: `https://personapulse-ai.onrender.com/api/powerbi/campaigns`
-- Power BI fontes: `https://personapulse-ai.onrender.com/api/powerbi/sources`
+Defina a URL publica conforme o servico publicado.
+
+- Aplicacao: `<URL_PUBLICA_DA_API>/app`
+- API/docs: `<URL_PUBLICA_DA_API>/docs`
+- Health check: `<URL_PUBLICA_DA_API>/health`
+- Power BI resumo: `<URL_PUBLICA_DA_API>/api/powerbi/executive-summary`
+- Power BI clientes: `<URL_PUBLICA_DA_API>/api/powerbi/customers`
+- Power BI campanhas: `<URL_PUBLICA_DA_API>/api/powerbi/campaigns`
+- Power BI fontes: `<URL_PUBLICA_DA_API>/api/powerbi/sources`
 
 ## Rodar localmente
 
