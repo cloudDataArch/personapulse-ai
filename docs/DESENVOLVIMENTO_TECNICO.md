@@ -113,7 +113,10 @@ Hoje a API possui persistencia hibrida:
 - usa PostgreSQL quando a variavel `DATABASE_URL` esta configurada;
 - usa JSON local quando `DATABASE_URL` nao existe, para desenvolvimento.
 
-O schema inicial esta em `APIS/personapulse-api/migrations/001_app_store_postgresql.sql`.
+Schemas SQL:
+
+- `APIS/personapulse-api/migrations/001_app_store_postgresql.sql`
+- `APIS/personapulse-api/migrations/002_relational_model.sql`
 
 Entidades sugeridas para o banco:
 
