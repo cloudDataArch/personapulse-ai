@@ -1492,7 +1492,7 @@
               <div style="height:12px"></div>
               <button class="btn primary" id="generatePricing">
                 <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16l3-4 3 2 5-7"/></svg></span>
-                Pesquisar internet
+                Pesquisar DataForSEO
               </button>
             </div>
           </article>
@@ -3343,7 +3343,13 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
       return {
         product,
         position,
-        source: "Google Search com fontes permitidas: Amazon, Magalu, TikTok Shop e Casas Bahia",
+        source: "Estimativa temporaria. Configure DataForSEO para precos reais estruturados.",
+        sourceStatus: [
+          { name: "DataForSEO Merchant API", status: "needs_credentials", needsCredentials: true },
+          { name: "Google Shopping via DataForSEO", status: "waiting_dataforseo", needsCredentials: true },
+          { name: "Amazon via DataForSEO", status: "phase_2", needsCredentials: true },
+          { name: "APIs oficiais por marketplace", status: "phase_2", needsCredentials: true },
+        ],
         ticketMedio: avg,
         priceSuggestions: [
           { label: "Preco competitivo", value: Math.round(avg * 0.88), reason: "Bom para entrada rapida em campanha e teste de conversao." },
@@ -3352,24 +3358,24 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
         ],
         range: { low: Math.round(base.low * m), high: Math.round(base.high * m) },
         attrs: base.attrs,
-        sources: [
-          { title: "Amazon via Google", url: `https://www.google.com/search?q=${encodeURIComponent(`site:amazon.com.br ${product} preco`)}` },
-          { title: "Magalu via Google", url: `https://www.google.com/search?q=${encodeURIComponent(`site:magazineluiza.com.br ${product} preco`)}` },
-          { title: "TikTok Shop via Google", url: `https://www.google.com/search?q=${encodeURIComponent(`site:shop.tiktok.com ${product} preco`)}` },
-          { title: "Casas Bahia via Google", url: `https://www.google.com/search?q=${encodeURIComponent(`site:casasbahia.com.br ${product} preco`)}` },
-        ],
+        sources: [],
+        observedItems: 0,
       };
     }
 
     function renderPricingResearch(data) {
       const suggestions = data.priceSuggestions.map(item => `- ${item.label}: ${formatBRL(item.value)} | ${item.reason}`).join("\n");
       const sources = data.sources && data.sources.length
-        ? data.sources.slice(0, 4).map((source, index) => `${index + 1}. ${source.title}\n   ${source.url}`).join("\n")
-        : "Nenhuma fonte permitida retornou referencia nesta execucao.";
+        ? data.sources.slice(0, 8).map((source, index) => `${index + 1}. ${source.title}${source.price ? ` | ${formatBRL(source.price)}` : ""}\n   ${source.url}`).join("\n")
+        : "Nenhuma fonte estruturada retornou referencia nesta execucao.";
+      const sourceStatus = (data.sourceStatus || [])
+        .map(source => `- ${source.name}: ${source.status === "active" ? "ativo" : "aguardando credenciais/acesso"}`)
+        .join("\n");
       const attrs = (data.attrs || []).map(attr => `- ${attr}`).join("\n");
       document.getElementById("pricingOutput").textContent = `Produto pesquisado: ${data.product}
 Posicionamento: ${data.position}
 Origem da analise: ${data.source}
+Itens oficiais analisados: ${data.observedItems || 0}
 
 Ticket medio estimado para o posicionamento:
 ${formatBRL(data.ticketMedio)}
@@ -3385,6 +3391,9 @@ ${attrs}
 
 Fontes e referencias:
 ${sources}
+
+Status da fonte de preços:
+${sourceStatus || "- DataForSEO Merchant API: aguardando credenciais"}
 
 Como usar na campanha:
 Use estes valores para orientar posicionamento e oferta. A copy final deve vender desejo, beneficio e diferenciacao, nao mostrar dados tecnicos internos.`;
