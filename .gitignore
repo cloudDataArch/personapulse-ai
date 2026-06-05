@@ -6,5 +6,5 @@ __pycache__/
 # Dados locais e tokens de desenvolvimento
 outputs/personapulse-api/data/
 
-# Arquivos temporarios de construcao local
-work/
+# Artefatos compilados locais
+*.class
