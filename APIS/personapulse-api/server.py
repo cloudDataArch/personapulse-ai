@@ -403,6 +403,9 @@ def ensure_postgres_schema():
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
             """)
+            relational_migration = BASE_DIR / "migrations" / "002_relational_model.sql"
+            if relational_migration.exists():
+                cur.execute(relational_migration.read_text(encoding="utf-8"))
         conn.commit()
 
 
@@ -435,7 +438,386 @@ def save_store_to_postgres(store):
                 """,
                 (STORE_KEY, Jsonb(store)),
             )
+            sync_relational_store(cur, store)
         conn.commit()
+
+
+def item_source(item, default):
+    return str(item.get("source") or item.get("origem") or item.get("origem_dados") or default)
+
+
+def item_text(item, keys, default=""):
+    for key in keys:
+        value = item.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return default
+
+
+def item_float(item, keys, default=0):
+    for key in keys:
+        value = item.get(key)
+        if value not in (None, ""):
+            try:
+                number = float(value)
+                if key == "cost_micros" or number > 1000000 and "cost" in key:
+                    return number / 1000000
+                return number
+            except (TypeError, ValueError):
+                continue
+    return default
+
+
+def item_int(item, keys, default=0):
+    return int(item_float(item, keys, default))
+
+
+def item_date(item, keys):
+    value = item_text(item, keys)
+    return value[:10] if value else None
+
+
+def item_timestamp(value):
+    if value in (None, ""):
+        return None
+    return str(value)
+
+
+def sync_relational_store(cur, store):
+    cur.execute("""
+        TRUNCATE
+            app.campaign_metrics,
+            app.recommendations,
+            app.events,
+            app.orders,
+            app.campaigns,
+            app.customers,
+            bi.powerbi_snapshots,
+            audit.audit_logs
+        RESTART IDENTITY CASCADE
+    """)
+
+    for source_key, config in store.get("connector_configs", {}).items():
+        public_config = public_connector_config(config)
+        cur.execute(
+            """
+            INSERT INTO integrations.data_sources (
+                source_key, source_name, source_type, status, last_sync_at,
+                config_public, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s::timestamptz, %s, NOW())
+            ON CONFLICT (source_key)
+            DO UPDATE SET
+                status = EXCLUDED.status,
+                last_sync_at = EXCLUDED.last_sync_at,
+                config_public = EXCLUDED.config_public,
+                updated_at = NOW()
+            """,
+            (
+                source_key,
+                item_text(config, ["name", "source_name"], source_key.replace("_", " ").title()),
+                item_text(config, ["source_type", "type"], "ads" if "ads" in source_key else source_key),
+                item_text(config, ["status"], "configured"),
+                item_timestamp(config.get("last_sync_at") or config.get("updated_at")),
+                Jsonb(public_config),
+            ),
+        )
+        cur.execute(
+            """
+            INSERT INTO integrations.connector_configs (
+                source_key, client_id, account_id, scopes, status,
+                secret_ref, token_ref, raw_payload, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (source_key)
+            DO UPDATE SET
+                client_id = EXCLUDED.client_id,
+                account_id = EXCLUDED.account_id,
+                scopes = EXCLUDED.scopes,
+                status = EXCLUDED.status,
+                secret_ref = EXCLUDED.secret_ref,
+                token_ref = EXCLUDED.token_ref,
+                raw_payload = EXCLUDED.raw_payload,
+                updated_at = NOW()
+            """,
+            (
+                source_key,
+                item_text(config, ["client_id", "app_id"]),
+                item_text(config, ["account_id", "ad_account_id", "customer_id"]),
+                ",".join(config.get("scopes") or []) if isinstance(config.get("scopes"), list) else item_text(config, ["scopes"]),
+                item_text(config, ["status"], "configured"),
+                "stored_in_app_store" if config.get("client_secret") else None,
+                "stored_in_app_store" if config.get("access_token") or config.get("refresh_token") else None,
+                Jsonb(public_config),
+            ),
+        )
+
+    customer_map = {}
+    customer_rows = []
+    for customer in store.get("customers", []):
+        customer_rows.append((customer, item_source(customer, "crm")))
+    for lead in store.get("meta_ads_leads", []):
+        customer_rows.append((lead, "meta_ads"))
+    for lead in store.get("ads_leads", []):
+        customer_rows.append((lead, item_source(lead, "ads")))
+
+    for customer, source in customer_rows:
+        external_id = item_text(customer, ["external_id", "lead_id", "id", "email"], str(uuid.uuid4()))
+        cur.execute(
+            """
+            INSERT INTO app.customers (
+                external_id, source, name, email, phone, city, state, country,
+                consent_marketing, consent_source, behavioral_segment,
+                intent_score, status, raw_payload, created_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s::timestamptz, NOW()), COALESCE(%s::timestamptz, NOW()))
+            ON CONFLICT (source, external_id)
+            DO UPDATE SET
+                name = EXCLUDED.name,
+                email = EXCLUDED.email,
+                phone = EXCLUDED.phone,
+                city = EXCLUDED.city,
+                state = EXCLUDED.state,
+                country = EXCLUDED.country,
+                consent_marketing = EXCLUDED.consent_marketing,
+                consent_source = EXCLUDED.consent_source,
+                behavioral_segment = EXCLUDED.behavioral_segment,
+                intent_score = EXCLUDED.intent_score,
+                status = EXCLUDED.status,
+                raw_payload = EXCLUDED.raw_payload,
+                updated_at = NOW()
+            RETURNING id
+            """,
+            (
+                external_id,
+                source,
+                item_text(customer, ["name", "nome", "full_name"], "Cliente sem nome"),
+                item_text(customer, ["email"]),
+                item_text(customer, ["phone", "telefone"]),
+                item_text(customer, ["city", "cidade"]),
+                item_text(customer, ["state", "estado"]),
+                item_text(customer, ["country", "pais"], "BR"),
+                as_bool(customer.get("consent_marketing") if "consent_marketing" in customer else customer.get("consentimento_marketing")),
+                item_text(customer, ["consent_source", "origem_consentimento"]),
+                item_text(customer, ["behavioral_segment", "segmento", "status"]),
+                item_float(customer, ["intent_score", "score_intencao", "score"]),
+                item_text(customer, ["status"]),
+                Jsonb(customer),
+                item_timestamp(customer.get("created_at")),
+                item_timestamp(customer.get("updated_at") or customer.get("created_at")),
+            ),
+        )
+        customer_id = cur.fetchone()[0]
+        customer_map[external_id] = customer_id
+        if customer.get("email"):
+            customer_map[str(customer.get("email"))] = customer_id
+
+    for order in store.get("orders", []):
+        external_customer_id = item_text(order, ["external_customer_id", "customer_external_id", "cliente_id"])
+        cur.execute(
+            """
+            INSERT INTO app.orders (
+                external_order_id, customer_id, external_customer_id, source,
+                product_name, category, store_name, channel, value, purchased_at,
+                raw_payload, created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::timestamptz, %s, COALESCE(%s::timestamptz, NOW()))
+            """,
+            (
+                item_text(order, ["order_id", "external_order_id", "id"], str(uuid.uuid4())),
+                customer_map.get(external_customer_id),
+                external_customer_id,
+                item_source(order, "crm"),
+                item_text(order, ["product_name", "produto"], "Produto nao informado"),
+                item_text(order, ["category", "categoria"]),
+                item_text(order, ["store", "store_name", "onde"]),
+                item_text(order, ["channel", "canal", "store"]),
+                item_float(order, ["value", "valor"]),
+                item_timestamp(order.get("purchased_at") or order.get("data_compra")),
+                Jsonb(order),
+                item_timestamp(order.get("created_at")),
+            ),
+        )
+
+    for event in store.get("events", []):
+        external_customer_id = item_text(event, ["external_customer_id", "customer_external_id", "cliente_id"])
+        cur.execute(
+            """
+            INSERT INTO app.events (
+                external_event_id, customer_id, external_customer_id, source,
+                event_type, product_name, channel, occurred_at, raw_payload, created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::timestamptz, %s, COALESCE(%s::timestamptz, NOW()))
+            """,
+            (
+                item_text(event, ["event_id", "external_event_id", "id"], str(uuid.uuid4())),
+                customer_map.get(external_customer_id),
+                external_customer_id,
+                item_source(event, "crm"),
+                item_text(event, ["event_type", "tipo"], "event"),
+                item_text(event, ["product_name", "produto"]),
+                item_text(event, ["channel", "canal"]),
+                item_timestamp(event.get("occurred_at") or event.get("created_at")),
+                Jsonb(event),
+                item_timestamp(event.get("created_at")),
+            ),
+        )
+
+    campaign_map = {}
+
+    def insert_campaign(campaign, default_source):
+        source = item_source(campaign, default_source)
+        external_id = item_text(campaign, ["campaign_id", "external_campaign_id", "id"], str(uuid.uuid4()))
+        cur.execute(
+            """
+            INSERT INTO app.campaigns (
+                external_campaign_id, source, name, status, channel, segment,
+                product_name, tone, creative_text, start_date, end_date,
+                raw_payload, created_at, updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::date, %s::date, %s, COALESCE(%s::timestamptz, NOW()), COALESCE(%s::timestamptz, NOW()))
+            ON CONFLICT (source, external_campaign_id)
+            DO UPDATE SET
+                name = EXCLUDED.name,
+                status = EXCLUDED.status,
+                channel = EXCLUDED.channel,
+                segment = EXCLUDED.segment,
+                product_name = EXCLUDED.product_name,
+                tone = EXCLUDED.tone,
+                creative_text = EXCLUDED.creative_text,
+                start_date = EXCLUDED.start_date,
+                end_date = EXCLUDED.end_date,
+                raw_payload = EXCLUDED.raw_payload,
+                updated_at = NOW()
+            RETURNING id
+            """,
+            (
+                external_id,
+                source,
+                item_text(campaign, ["name", "campaign_name", "title"], "Campanha sem nome"),
+                item_text(campaign, ["status"], "draft"),
+                item_text(campaign, ["channel", "canal"]),
+                item_text(campaign, ["segment", "segmento", "segment_name"]),
+                item_text(campaign, ["product_name", "produto"]),
+                item_text(campaign, ["tone", "tom"]),
+                item_text(campaign, ["body", "creative_text", "texto"]),
+                item_date(campaign, ["start_date", "date_start", "start_time"]),
+                item_date(campaign, ["end_date", "date_stop", "stop_time"]),
+                Jsonb(campaign),
+                item_timestamp(campaign.get("created_at")),
+                item_timestamp(campaign.get("updated_at") or campaign.get("created_at")),
+            ),
+        )
+        campaign_id = cur.fetchone()[0]
+        campaign_map[(source, external_id)] = campaign_id
+        campaign_map[external_id] = campaign_id
+        return campaign_id
+
+    for campaign in store.get("campaigns", []):
+        insert_campaign(campaign, "personapulse")
+    for campaign in store.get("meta_ads_campaigns", []):
+        insert_campaign(campaign, "meta_ads")
+    for campaign in store.get("ads_campaigns", []):
+        insert_campaign(campaign, item_source(campaign, "ads"))
+
+    for insight in store.get("meta_ads_insights", []) + store.get("ads_insights", []):
+        source = item_source(insight, "meta_ads" if insight in store.get("meta_ads_insights", []) else "ads")
+        external_id = item_text(insight, ["campaign_id", "external_campaign_id", "id"], str(uuid.uuid4()))
+        campaign_id = campaign_map.get((source, external_id)) or campaign_map.get(external_id)
+        if not campaign_id:
+            campaign_id = insert_campaign({
+                "campaign_id": external_id,
+                "source": source,
+                "name": item_text(insight, ["campaign_name", "name"], f"Campanha {external_id}"),
+                "status": "active",
+            }, source)
+        cur.execute(
+            """
+            INSERT INTO app.campaign_metrics (
+                campaign_id, external_campaign_id, source, metric_date,
+                impressions, clicks, conversions, leads, spend, revenue,
+                raw_payload, created_at
+            )
+            VALUES (%s, %s, %s, COALESCE(%s::date, CURRENT_DATE), %s, %s, %s, %s, %s, %s, %s, NOW())
+            ON CONFLICT (source, external_campaign_id, metric_date)
+            DO UPDATE SET
+                impressions = EXCLUDED.impressions,
+                clicks = EXCLUDED.clicks,
+                conversions = EXCLUDED.conversions,
+                leads = EXCLUDED.leads,
+                spend = EXCLUDED.spend,
+                revenue = EXCLUDED.revenue,
+                raw_payload = EXCLUDED.raw_payload
+            """,
+            (
+                campaign_id,
+                external_id,
+                source,
+                item_date(insight, ["date", "metric_date", "date_start", "created_at"]),
+                item_int(insight, ["impressions"]),
+                item_int(insight, ["clicks"]),
+                item_int(insight, ["conversions", "purchases"]),
+                item_int(insight, ["leads"]),
+                item_float(insight, ["spend", "cost", "cost_micros"]),
+                item_float(insight, ["purchase_value", "revenue", "conversion_value"]),
+                Jsonb(insight),
+            ),
+        )
+
+    for recommendation in store.get("recommendations", []):
+        cur.execute(
+            """
+            INSERT INTO app.recommendations (
+                recommendation_type, title, description, priority, status, raw_payload, created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, COALESCE(%s::timestamptz, NOW()))
+            """,
+            (
+                item_text(recommendation, ["type", "recommendation_type"], "general"),
+                item_text(recommendation, ["title"], "Recomendacao"),
+                item_text(recommendation, ["description", "body"]),
+                item_int(recommendation, ["priority"]),
+                item_text(recommendation, ["status"], "open"),
+                Jsonb(recommendation),
+                item_timestamp(recommendation.get("created_at")),
+            ),
+        )
+
+    snapshot = store.get("powerbi_snapshot") or {}
+    if snapshot:
+        cur.execute(
+            """
+            INSERT INTO bi.powerbi_snapshots (
+                snapshot_key, summary, customers, campaigns, sources, created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, COALESCE(%s::timestamptz, NOW()))
+            """,
+            (
+                STORE_KEY,
+                Jsonb(snapshot.get("summary") or {}),
+                Jsonb(snapshot.get("customers") or []),
+                Jsonb(snapshot.get("campaigns") or []),
+                Jsonb(snapshot.get("sources") or []),
+                item_timestamp(snapshot.get("updated_at")),
+            ),
+        )
+
+    for entry in store.get("audit_logs", []):
+        cur.execute(
+            """
+            INSERT INTO audit.audit_logs (id, action, entity_type, entity_id, details, created_at)
+            VALUES (%s, %s, %s, %s, %s, COALESCE(%s::timestamptz, NOW()))
+            ON CONFLICT (id) DO NOTHING
+            """,
+            (
+                entry.get("id") or str(uuid.uuid4()),
+                item_text(entry, ["action"], "event"),
+                item_text(entry, ["entity_type"]),
+                item_text(entry, ["entity_id"]),
+                Jsonb(entry.get("details") or {}),
+                item_timestamp(entry.get("created_at")),
+            ),
+        )
 
 
 def load_store_from_json():
