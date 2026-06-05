@@ -12,7 +12,7 @@ O MVP atual evita coleta invasiva de dados e trabalha com fontes declaradas, imp
 flowchart LR
   U["Usuario"] --> F["Frontend PersonaPulse"]
   F --> API["API Python PersonaPulse"]
-  API --> STORE["Persistencia JSON atual"]
+  API --> STORE["PostgreSQL"]
   F --> PBI["Power BI"]
   API --> PBIAPI["Endpoints Power BI"]
   CRM["CRM/API externa"] --> API
@@ -28,7 +28,6 @@ flowchart LR
 - Documentacao da API: `APIS/personapulse-api/README.md`
 - Documentos de produto/organograma: arquivos `.docx` dentro de `DOCUMENTOS/`
 - Imagens de interface: `interfaces.PNG/`
-- Exemplos JSON: `JSON/`
 - Bases CSV: `CSV/`
 - Scripts de geracao e apoio: `scripts/`
 - Guia PostgreSQL: `docs/BANCO_POSTGRESQL.md`
@@ -106,12 +105,12 @@ Quando o Power BI mostrar campos do tipo `List` ou `Record`, expandir a lista co
 
 O endpoint `executive-summary` deve manter schema estavel, mesmo sem dados, para evitar quebra de colunas no Power BI.
 
-## Persistencia atual e proximo passo
+## Persistencia atual
 
-Hoje a API possui persistencia hibrida:
+Hoje a API usa PostgreSQL como persistencia oficial:
 
 - usa PostgreSQL quando a variavel `DATABASE_URL` esta configurada;
-- usa JSON local quando `DATABASE_URL` nao existe, para desenvolvimento.
+- sem `DATABASE_URL`, a API retorna erro de configuracao e nao grava dados;
 
 Schemas SQL:
 

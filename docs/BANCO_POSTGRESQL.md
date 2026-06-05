@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Migrar a persistencia do PersonaPulse AI de arquivo JSON local para PostgreSQL, mantendo compatibilidade com:
+Manter a persistencia do PersonaPulse AI em PostgreSQL, mantendo compatibilidade com:
 
 - frontend do PersonaPulse;
 - CRM;
@@ -11,12 +11,10 @@ Migrar a persistencia do PersonaPulse AI de arquivo JSON local para PostgreSQL, 
 
 ## Estrategia do MVP
 
-Nesta etapa, o backend usa uma camada hibrida:
+Nesta etapa, o PostgreSQL e a persistencia oficial do PersonaPulse AI:
 
 - se `DATABASE_URL` existir, a API usa PostgreSQL;
-- se `DATABASE_URL` nao existir, a API usa o arquivo local `data/store.json`.
-
-Isso permite desenvolver localmente sem banco e usar PostgreSQL em producao.
+- se `DATABASE_URL` nao existir, a API retorna erro de configuracao e nao grava dados;
 
 ## Modelo atual
 

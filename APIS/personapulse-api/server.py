@@ -24,8 +24,6 @@ except ImportError:
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8088"))
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
-STORE_FILE = DATA_DIR / "store.json"
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 API_VERSION = "v20.0"
 ASSETS_DIR = BASE_DIR / "assets"
@@ -698,6 +696,12 @@ def using_postgres():
     return bool(DATABASE_URL)
 
 
+def persistence_status():
+    if using_postgres():
+        return "postgresql"
+    return "database_missing"
+
+
 def postgres_connection():
     if psycopg is None:
         raise RuntimeError("DATABASE_URL foi configurado, mas psycopg[binary] nao esta instalado.")
@@ -1173,33 +1177,16 @@ def sync_relational_store(cur, store):
         )
 
 
-def load_store_from_json():
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not STORE_FILE.exists():
-        save_store_to_json(empty_store())
-    with STORE_FILE.open("r", encoding="utf-8") as f:
-        store = json.load(f)
-    for key, value in empty_store().items():
-        store.setdefault(key, value)
-    return store
-
-
-def save_store_to_json(store):
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with STORE_FILE.open("w", encoding="utf-8") as f:
-        json.dump(store, f, ensure_ascii=False, indent=2)
-
-
 def load_store():
     if using_postgres():
         return load_store_from_postgres()
-    return load_store_from_json()
+    raise RuntimeError("DATABASE_URL nao configurada. Configure o PostgreSQL no Render para habilitar persistencia.")
 
 
 def save_store(store):
     if using_postgres():
         return save_store_to_postgres(store)
-    return save_store_to_json(store)
+    raise RuntimeError("DATABASE_URL nao configurada. Dados nao foram gravados.")
 
 
 def add_audit(store, action, details):
@@ -1725,7 +1712,6 @@ class Handler(BaseHTTPRequestHandler):
         parsed_url = urlparse(self.path)
         path = parsed_url.path
         query = parse_qs(parsed_url.query)
-        store = load_store()
         if path == "/":
             return self.redirect("/app")
         if path in {"/app", "/app/"}:
@@ -1733,12 +1719,31 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/docs":
             return self.send_html(DOCS_HTML)
         if path == "/health":
-            return self.send_json(200, {
-                "status": "ok",
+            persistence = persistence_status()
+            payload = {
+                "status": "ok" if persistence != "database_missing" else "configuration_required",
                 "service": "personapulse-api",
-                "persistence": "postgresql" if using_postgres() else "json",
+                "persistence": persistence,
+                "database_url_configured": using_postgres(),
                 "time": now_iso(),
-            })
+            }
+            status_code = 200 if persistence != "database_missing" else 503
+            if using_postgres():
+                try:
+                    with postgres_connection() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute("SELECT 1")
+                    payload["database_connected"] = True
+                except Exception as exc:
+                    payload["status"] = "database_error"
+                    payload["database_connected"] = False
+                    payload["detail"] = str(exc)
+                    status_code = 503
+            return self.send_json(status_code, payload)
+        try:
+            store = load_store()
+        except RuntimeError as exc:
+            return self.send_json(503, {"error": "database_not_configured", "detail": str(exc)})
         if path == "/api/price-research":
             product = (query.get("product") or ["Produto"])[0]
             position = (query.get("position") or ["Intermediário"])[0]
@@ -1868,8 +1873,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        store = load_store()
         try:
+            store = load_store()
             payload = read_json(self)
             if path == "/api/crm/customers":
                 external_id = payload.get("external_id") or str(uuid.uuid4())
@@ -2053,13 +2058,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"status": "pushed", "count": len(store["recommendations"]), "target_crm": payload.get("target_crm", "crm")})
 
             self.send_json(404, {"error": "not_found"})
+        except RuntimeError as exc:
+            self.send_json(503, {"error": "database_not_configured", "detail": str(exc)})
         except Exception as exc:
             self.send_json(400, {"error": "bad_request", "detail": str(exc)})
 
     def do_DELETE(self):
         path = urlparse(self.path).path
-        store = load_store()
         try:
+            store = load_store()
             if path == "/api/data-sources/crm":
                 counts = {
                     "customers": len(store["customers"]),
@@ -2124,12 +2131,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, {"status": "deleted", "source": source, "counts": counts})
 
             self.send_json(404, {"error": "not_found"})
+        except RuntimeError as exc:
+            self.send_json(503, {"error": "database_not_configured", "detail": str(exc)})
         except Exception as exc:
             self.send_json(400, {"error": "bad_request", "detail": str(exc)})
 
 
 if __name__ == "__main__":
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"PersonaPulse API running at http://{HOST}:{PORT}/docs")
     server.serve_forever()

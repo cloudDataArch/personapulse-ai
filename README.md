@@ -9,8 +9,7 @@ Prototipo navegavel do PersonaPulse AI com dashboard, clientes, campanhas, pesqu
 - `APIS/personapulse-api/README.md`: referencia de endpoints da API.
 - `APIS/personapulse-api/RENDER_DEPLOY.md`: guia de deploy no Render.
 - `interfaces.HTML/personapulse-prototype/index.html`: frontend navegavel do MVP.
-- `interfaces.PNG/`: imagens de interface, previews, organograma e campanha.
-- `JSON/`: exemplos de payloads JSON para API.
+- `interfaces.PNG/`: imagens de interface, previews e organograma.
 - `CSV/`: bases demonstrativas de clientes.
 - `DOCUMENTOS/`: arquivos DOCX de arquitetura, organograma, comparativo e roteiro.
 - `scripts/`: scripts usados para gerar documentos, CSVs, imagens e utilitarios.
@@ -61,4 +60,4 @@ Use o blueprint `render.yaml` ou crie um Web Service manualmente:
 
 ## Proximo marco tecnico
 
-Configurar `DATABASE_URL` no Render e validar a persistencia PostgreSQL com CRM, Ads e Power BI.
+Configurar `DATABASE_URL` no Render e validar a persistencia PostgreSQL com CRM, Ads e Power BI. Sem `DATABASE_URL`, a API nao grava dados em producao.

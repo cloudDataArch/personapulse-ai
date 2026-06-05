@@ -81,10 +81,10 @@ python .\ads_multi_simulator.py
 
 ## Persistencia
 
-Esta versao usa persistencia hibrida:
+Esta versao usa PostgreSQL como persistencia oficial.
 
-- PostgreSQL quando `DATABASE_URL` estiver configurada;
-- JSON local em `data/store.json` quando `DATABASE_URL` nao estiver configurada.
+- Configure `DATABASE_URL` em producao.
+- Sem `DATABASE_URL`, a API retorna erro de configuracao e nao grava dados.
 
 Schema SQL:
 
