@@ -1248,8 +1248,15 @@ def http_post_json(url, payload, headers=None):
         body = exc.read().decode("utf-8", errors="replace")
         detail = body
         try:
-            payload = json.loads(body)
-            detail = payload.get("error", {}).get("message") or payload.get("error_description") or body
+            error_payload = json.loads(body)
+            if isinstance(error_payload, dict):
+                error_value = error_payload.get("error")
+                if isinstance(error_value, dict):
+                    detail = error_value.get("message") or error_value.get("status") or body
+                else:
+                    detail = error_payload.get("error_description") or error_payload.get("message") or body
+            elif isinstance(error_payload, list):
+                detail = json.dumps(error_payload[:2], ensure_ascii=False)
         except json.JSONDecodeError:
             pass
         raise RuntimeError(f"HTTP {exc.code} {exc.reason}: {detail}") from exc
