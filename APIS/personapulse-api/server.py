@@ -790,6 +790,21 @@ def item_float(item, keys, default=0):
     return default
 
 
+def parse_money_value(value):
+    if value in (None, ""):
+        return 0
+    text = str(value)
+    cleaned = "".join(char for char in text if char.isdigit() or char in ",.-")
+    if "." in cleaned and "," in cleaned:
+        cleaned = cleaned.replace(".", "").replace(",", ".")
+    elif "," in cleaned:
+        cleaned = cleaned.replace(",", ".")
+    try:
+        return float(cleaned)
+    except (TypeError, ValueError):
+        return 0
+
+
 def item_int(item, keys, default=0):
     return int(item_float(item, keys, default))
 
@@ -1175,6 +1190,159 @@ def sync_relational_store(cur, store):
                 item_timestamp(entry.get("created_at")),
             ),
         )
+
+
+STORE_COUNT_KEYS = {
+    "customers": "customers",
+    "orders": "orders",
+    "events": "events",
+    "campaigns": "campaigns",
+    "meta_ads_campaigns": "meta_ads_campaigns",
+    "meta_ads_insights": "meta_ads_insights",
+    "meta_ads_leads": "meta_ads_leads",
+    "ads_campaigns": "ads_campaigns",
+    "ads_insights": "ads_insights",
+    "ads_leads": "ads_leads",
+    "price_researches": "price_researches",
+}
+
+
+RELATIONAL_COUNT_TABLES = [
+    "app.customers",
+    "app.orders",
+    "app.events",
+    "app.campaigns",
+    "app.campaign_metrics",
+    "app.price_researches",
+    "app.recommendations",
+    "integrations.data_sources",
+    "integrations.connector_configs",
+    "bi.powerbi_snapshots",
+    "audit.audit_logs",
+]
+
+
+def store_counts(store):
+    return {label: len(store.get(key, [])) for label, key in STORE_COUNT_KEYS.items()}
+
+
+def relational_counts():
+    if not using_postgres():
+        return {}
+    ensure_postgres_schema()
+    counts = {}
+    with postgres_connection() as conn:
+        with conn.cursor() as cur:
+            for table_name in RELATIONAL_COUNT_TABLES:
+                cur.execute(f"SELECT COUNT(*) FROM {table_name}")
+                counts[table_name] = cur.fetchone()[0]
+    return counts
+
+
+def database_status_payload(store):
+    payload = {
+        "status": "ok",
+        "service": "personapulse-api",
+        "persistence": persistence_status(),
+        "database_url_configured": using_postgres(),
+        "store_counts": store_counts(store),
+        "relational_counts": {},
+        "time": now_iso(),
+    }
+    if using_postgres():
+        payload["relational_counts"] = relational_counts()
+    return payload
+
+
+def normalize_imported_customer(row, index, file_name):
+    external_id = item_text(row, ["external_id", "cliente_id", "customer_id", "id", "email"], f"csv_{index + 1:06d}")
+    name = item_text(row, ["nome", "name", "cliente", "full_name"], "Cliente CSV")
+    email = item_text(row, ["email"])
+    phone = item_text(row, ["telefone", "phone", "whatsapp"])
+    city = item_text(row, ["cidade", "city"])
+    state = item_text(row, ["estado", "state"])
+    consent_value = row.get("consentimento_marketing") if "consentimento_marketing" in row else row.get("consent_marketing")
+    customer = {
+        **row,
+        "external_id": external_id,
+        "source": "csv",
+        "name": name,
+        "email": email,
+        "phone": phone,
+        "city": city,
+        "state": state,
+        "country": item_text(row, ["pais", "country"], "BR"),
+        "consent_marketing": as_bool(consent_value),
+        "consent_source": item_text(row, ["origem_consentimento", "consent_source"], "csv"),
+        "behavioral_segment": item_text(row, ["estilo_comportamental", "status_comportamental", "segmento", "status"]),
+        "intent_score": item_float(row, ["score_intencao", "intent_score", "score"]),
+        "status": item_text(row, ["status_comportamental", "status"]),
+        "origem_dados": "CSV",
+        "origem_arquivo": file_name,
+        "updated_at": now_iso(),
+    }
+    product = item_text(row, ["produto_comprado", "produto_ultimo_interesse", "produto", "product_name"])
+    value = parse_money_value(item_text(row, ["valor_compra", "valor", "value", "ticket_medio", "ticket"], "0"))
+    order = None
+    if product or value:
+        purchased_at = item_text(row, ["data_compra", "ultima_compra", "purchased_at", "created_at"])
+        order = {
+            **row,
+            "id": str(uuid.uuid4()),
+            "order_id": item_text(row, ["order_id", "external_order_id"], f"csv_{external_id}_{index + 1}"),
+            "external_customer_id": external_id,
+            "source": "csv",
+            "product_name": product or "Produto nao informado",
+            "category": item_text(row, ["categoria_preferida", "categoria", "category"]),
+            "store": item_text(row, ["onde_comprou", "local_compra", "loja", "origem", "canal_preferido"], "CSV"),
+            "channel": item_text(row, ["canal_preferido", "canal"], "CSV"),
+            "value": value,
+            "purchased_at": purchased_at or now_iso(),
+            "created_at": now_iso(),
+        }
+    events = []
+    if as_bool(row.get("carrinho_abandonado")):
+        events.append({
+            "id": str(uuid.uuid4()),
+            "event_id": f"csv_cart_{external_id}_{index + 1}",
+            "external_customer_id": external_id,
+            "source": "csv",
+            "event_type": "abandoned_cart",
+            "product_name": product,
+            "channel": item_text(row, ["canal_preferido", "canal"], "CSV"),
+            "occurred_at": now_iso(),
+            "created_at": now_iso(),
+        })
+    return customer, order, events
+
+
+def import_csv_customers(store, rows, file_name="arquivo.csv", replace_source=True):
+    if replace_source:
+        store["customers"] = [item for item in store.get("customers", []) if item_source(item, "").lower() != "csv"]
+        store["orders"] = [item for item in store.get("orders", []) if item_source(item, "").lower() != "csv"]
+        store["events"] = [item for item in store.get("events", []) if item_source(item, "").lower() != "csv"]
+    customers = []
+    orders = []
+    events = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        customer, order, customer_events = normalize_imported_customer(row, index, file_name)
+        customers.append(customer)
+        if order:
+            orders.append(order)
+        events.extend(customer_events)
+    store["customers"].extend(customers)
+    store["orders"].extend(orders)
+    store["events"].extend(events)
+    add_audit(store, "csv_customers_imported", {
+        "file_name": file_name,
+        "customers": len(customers),
+        "orders": len(orders),
+        "events": len(events),
+        "replace_source": replace_source,
+    })
+    return {"customers": len(customers), "orders": len(orders), "events": len(events)}
 
 
 def load_store():
@@ -1682,6 +1850,7 @@ DOCS_HTML = """
   <p>API local para receber clientes, pedidos e eventos de um CRM e devolver segmentos, campanhas e recomendações.</p>
 
   <section><span class="method">GET</span> <code>/health</code><p>Status da API.</p></section>
+  <section><span class="method">GET</span> <code>/api/db/status</code><p>Diagnostico do PostgreSQL: contagens do store consolidado e das tabelas relacionais.</p></section>
   <section><span class="method">POST</span> <code>/api/crm/customers</code><p>Cria ou atualiza cliente vindo do CRM.</p>
 <pre>{
   "external_id": "crm_123",
@@ -1709,6 +1878,20 @@ DOCS_HTML = """
   "event_type": "product_view",
   "product_name": "Notebook Dell Inspiron",
   "occurred_at": "2026-05-31T15:00:00"
+}</pre></section>
+  <section><span class="method">POST</span> <code>/api/import/customers</code><p>Importa uma lista de clientes vindos de CSV/XLS convertido no front. Preserva CRM e substitui a origem CSV anterior.</p>
+<pre>{
+  "file_name": "clientes.csv",
+  "customers": [
+    {
+      "cliente_id": "CLI-0001",
+      "nome": "Ana Silva",
+      "email": "ana@email.com",
+      "produto_comprado": "Notebook Dell Inspiron",
+      "valor_compra": "5299.90",
+      "consentimento_marketing": "sim"
+    }
+  ]
 }</pre></section>
   <section><span class="method">GET</span> <code>/api/segments</code><p>Retorna segmentos calculados.</p></section>
   <section><span class="method">GET</span> <code>/api/powerbi/executive-summary</code><p>Resumo executivo em JSON para Power BI, com clientes, campanhas, receita, gasto, ROI real e fontes.</p></section>
@@ -2012,6 +2195,19 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/powerbi/sources":
             rows = powerbi_sources(store)
             return self.send_json(200, {"sources": rows, "count": len(rows), "updated_at": (store.get("powerbi_snapshot") or {}).get("updated_at")})
+        if path == "/api/db/status":
+            try:
+                return self.send_json(200, database_status_payload(store))
+            except Exception as exc:
+                return self.send_json(503, {
+                    "status": "database_error",
+                    "service": "personapulse-api",
+                    "persistence": persistence_status(),
+                    "database_url_configured": using_postgres(),
+                    "store_counts": store_counts(store),
+                    "detail": str(exc),
+                    "time": now_iso(),
+                })
         if path == "/api/crm/customers":
             return self.send_json(200, {"customers": store["customers"], "count": len(store["customers"])})
         if path == "/api/crm/orders":
@@ -2183,6 +2379,23 @@ class Handler(BaseHTTPRequestHandler):
                     "campaigns": len(snapshot["campaigns"]),
                     "sources": len(snapshot["sources"]),
                 })
+
+            if path == "/api/import/customers":
+                rows = payload.get("customers") or payload.get("rows") or []
+                if not isinstance(rows, list):
+                    return self.send_json(400, {"error": "invalid_payload", "detail": "Envie customers ou rows como lista."})
+                result = import_csv_customers(
+                    store,
+                    rows,
+                    file_name=payload.get("file_name") or payload.get("filename") or "arquivo.csv",
+                    replace_source=not (payload.get("append") is True),
+                )
+                save_store(store)
+                return self.send_json(200, {"status": "imported", **result, "store_counts": store_counts(store)})
+
+            if path == "/api/db/rebuild-relational":
+                save_store(store)
+                return self.send_json(200, {**database_status_payload(store), "rebuild_status": "rebuilt"})
 
             if path == "/api/campaigns/generate":
                 campaign = generate_campaign(payload)

@@ -2418,6 +2418,23 @@
       }
     }
 
+    async function publishCsvImport(fileName, customers) {
+      const response = await fetch(apiUrl("/api/import/customers"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          file_name: fileName,
+          customers,
+          append: false,
+        }),
+      });
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(detail || "csv_import_failed");
+      }
+      return response.json();
+    }
+
     function refreshCombinedData(messageHtml = "") {
       importedCustomers = [...csvCustomers, ...crmCustomers, ...metaAdsCustomers, ...externalAdsCustomers];
       importedHeaders = importedCustomers.length
@@ -2864,7 +2881,7 @@
 
     function importCsvFile(file) {
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         const rows = parseCsv(String(reader.result || ""));
         const hasHeader = rows.length > 1;
         const csvHeaders = hasHeader ? rows[0] : rows[0].map((_, index) => `coluna_${index + 1}`);
@@ -2878,8 +2895,14 @@
         const corrected = Math.max(0, Math.round(csvOnlyInsights.total * 0.03));
 
         activateTab("dashboard");
-        audit.unshift(["CSV importado", `${csvOnlyInsights.total.toLocaleString("pt-BR")} registros lidos do arquivo ${file.name}; ${corrected.toLocaleString("pt-BR")} possiveis inconsistencias normalizadas. CRM preservado com ${crmCustomers.length.toLocaleString("pt-BR")} clientes.`]);
-        refreshCombinedData(`<strong>CSV importado com sucesso.</strong> ${csvCustomers.length.toLocaleString("pt-BR")} registros vieram de ${file.name}. Os dados do CRM foram preservados. ${sourceSummary()}.`);
+        try {
+          await publishCsvImport(file.name, csvCustomers);
+          audit.unshift(["CSV importado", `${csvOnlyInsights.total.toLocaleString("pt-BR")} registros lidos do arquivo ${file.name}; ${corrected.toLocaleString("pt-BR")} possiveis inconsistencias normalizadas. CRM preservado com ${crmCustomers.length.toLocaleString("pt-BR")} clientes.`]);
+          refreshCombinedData(`<strong>CSV importado com sucesso.</strong> ${csvCustomers.length.toLocaleString("pt-BR")} registros vieram de ${file.name} e foram gravados no PostgreSQL. Os dados do CRM foram preservados. ${sourceSummary()}.`);
+        } catch (error) {
+          audit.unshift(["CSV nao gravado no banco", `O arquivo ${file.name} foi carregado no painel, mas a API retornou erro ao persistir no PostgreSQL.`]);
+          refreshCombinedData(`<strong>CSV carregado no painel.</strong> Nao foi possivel gravar no PostgreSQL agora. Confirme a conexao da API e tente novamente. ${sourceSummary()}.`);
+        }
       };
       reader.readAsText(file, "utf-8");
     }
