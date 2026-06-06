@@ -1241,8 +1241,18 @@ def http_get_json(url, params):
 def http_post_json(url, payload, headers=None):
     data = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **(headers or {})}, method="POST")
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        detail = body
+        try:
+            payload = json.loads(body)
+            detail = payload.get("error", {}).get("message") or payload.get("error_description") or body
+        except json.JSONDecodeError:
+            pass
+        raise RuntimeError(f"HTTP {exc.code} {exc.reason}: {detail}") from exc
 
 
 def http_post_form_json(url, payload):
