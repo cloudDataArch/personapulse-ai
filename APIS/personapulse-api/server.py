@@ -1278,6 +1278,14 @@ def oauth_error_html(title, detail):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18204384285"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){{dataLayer.push(arguments);}}
+    gtag('js', new Date());
+    gtag('config', 'AW-18204384285');
+  </script>
   <title>{safe_title}</title>
   <style>
     body {{ font-family: Arial, sans-serif; background:#f6f8fb; color:#07142f; padding:40px; }}
@@ -1647,6 +1655,14 @@ DOCS_HTML = """
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=AW-18204384285"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'AW-18204384285');
+  </script>
   <title>PersonaPulse API Docs</title>
   <style>
     body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#f6f8fb;color:#172033}
