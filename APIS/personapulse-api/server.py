@@ -1502,43 +1502,56 @@ def refresh_google_token(config):
     return config["access_token"]
 
 
-def sync_google_ads(store, config):
-    customer_id = str(config.get("account_id", "")).replace("-", "").strip()
-    developer_token = config.get("developer_token", "").strip()
-    access_token = refresh_google_token(config)
-    if not customer_id or not developer_token or not access_token:
-        raise ValueError("Google Ads precisa de customer_id, developer_token e OAuth autorizado.")
-
-    query = """
-      SELECT
-        campaign.id,
-        campaign.name,
-        campaign.status,
-        campaign.advertising_channel_type,
-        metrics.impressions,
-        metrics.clicks,
-        metrics.cost_micros,
-        metrics.conversions,
-        metrics.conversions_value
-      FROM campaign
-      WHERE segments.date DURING LAST_30_DAYS
-      LIMIT 100
-    """
+def google_ads_headers(access_token, developer_token, login_customer_id=""):
     headers = {
         "Authorization": f"Bearer {access_token}",
         "developer-token": developer_token,
     }
-    login_customer_id = str(config.get("login_customer_id", "")).replace("-", "").strip()
+    login_customer_id = str(login_customer_id or "").replace("-", "").strip()
     if login_customer_id:
         headers["login-customer-id"] = login_customer_id
+    return headers
 
-    payload = http_post_json(
+
+def google_ads_search_stream(customer_id, query, access_token, developer_token, login_customer_id=""):
+    customer_id = str(customer_id).replace("-", "").replace("customers/", "").strip()
+    return http_post_json(
         f"https://googleads.googleapis.com/v22/customers/{customer_id}/googleAds:searchStream",
         {"query": query},
-        headers,
+        google_ads_headers(access_token, developer_token, login_customer_id),
     )
 
-    source = "google"
+
+def google_ads_client_accounts(manager_id, access_token, developer_token):
+    query = """
+      SELECT
+        customer_client.client_customer,
+        customer_client.descriptive_name,
+        customer_client.manager,
+        customer_client.status
+      FROM customer_client
+      WHERE customer_client.manager = false
+    """
+    payload = google_ads_search_stream(manager_id, query, access_token, developer_token, manager_id)
+    clients = []
+    for batch in payload if isinstance(payload, list) else []:
+        for row in batch.get("results", []):
+            client = row.get("customerClient", {})
+            client_customer = str(client.get("clientCustomer", "")).replace("customers/", "").strip()
+            if client_customer:
+                clients.append({
+                    "customer_id": client_customer,
+                    "name": client.get("descriptiveName") or client_customer,
+                    "status": client.get("status"),
+                })
+    return clients
+
+
+def google_ads_is_manager_metrics_error(error):
+    return "REQUESTED_METRICS_FOR_MANAGER" in str(error)
+
+
+def import_google_ads_payload(store, payload, source="google"):
     campaign_count = 0
     insight_count = 0
     for batch in payload if isinstance(payload, list) else []:
@@ -1574,10 +1587,58 @@ def sync_google_ads(store, config):
             }
             store["ads_insights"].insert(0, insight_payload)
             insight_count += 1
+    return campaign_count, insight_count
+
+
+def sync_google_ads(store, config):
+    customer_id = str(config.get("account_id", "")).replace("-", "").strip()
+    developer_token = config.get("developer_token", "").strip()
+    access_token = refresh_google_token(config)
+    if not customer_id or not developer_token or not access_token:
+        raise ValueError("Google Ads precisa de customer_id, developer_token e OAuth autorizado.")
+
+    query = """
+      SELECT
+        campaign.id,
+        campaign.name,
+        campaign.status,
+        campaign.advertising_channel_type,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.cost_micros,
+        metrics.conversions,
+        metrics.conversions_value
+      FROM campaign
+      WHERE segments.date DURING LAST_30_DAYS
+      LIMIT 100
+    """
+    login_customer_id = str(config.get("login_customer_id", "")).replace("-", "").strip()
+    campaign_count = 0
+    insight_count = 0
+    synced_customers = []
+
+    try:
+        payload = google_ads_search_stream(customer_id, query, access_token, developer_token, login_customer_id)
+        campaigns, insights = import_google_ads_payload(store, payload)
+        campaign_count += campaigns
+        insight_count += insights
+        synced_customers.append(customer_id)
+    except RuntimeError as exc:
+        if not google_ads_is_manager_metrics_error(exc):
+            raise
+        clients = google_ads_client_accounts(customer_id, access_token, developer_token)
+        if not clients:
+            raise RuntimeError("A conta informada e uma MCC, mas nenhuma conta cliente foi encontrada abaixo dela.") from exc
+        for client in clients:
+            payload = google_ads_search_stream(client["customer_id"], query, access_token, developer_token, customer_id)
+            campaigns, insights = import_google_ads_payload(store, payload)
+            campaign_count += campaigns
+            insight_count += insights
+            synced_customers.append(client["customer_id"])
 
     config["last_sync_at"] = now_iso()
     config["status"] = "synced"
-    return {"campaigns": campaign_count, "insights": insight_count}
+    return {"campaigns": campaign_count, "insights": insight_count, "customers": synced_customers}
 
 
 DOCS_HTML = """
