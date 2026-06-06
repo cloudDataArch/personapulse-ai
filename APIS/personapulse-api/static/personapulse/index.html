@@ -1721,6 +1721,22 @@
       return `${apiBaseUrl()}${path}`;
     }
 
+    async function fetchJsonWithTimeout(url, options = {}, timeoutMs = 45000) {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const detail = payload.detail || payload.error || `HTTP ${response.status}`;
+          throw new Error(detail);
+        }
+        return payload;
+      } finally {
+        window.clearTimeout(timer);
+      }
+    }
+
     function oauthRedirectUri() {
       return `${apiBaseUrl()}/api/oauth/callback`;
     }
@@ -3666,8 +3682,22 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
     document.getElementById("syncRealConnector").addEventListener("click", () => {
       if (!selectedConnectorId) return;
       const notice = document.getElementById("csvNotice");
-      fetch(apiUrl(`/api/connectors/${selectedConnectorId}/sync`), { method: "POST" })
-        .then(response => response.json())
+      const feedback = document.getElementById("connectorFeedback");
+      const button = document.getElementById("syncRealConnector");
+      const accountId = document.getElementById("connectorAccountId").value.trim();
+      if (selectedConnectorId === "google" && !/^\d{6,}$/.test(accountId.replace(/-/g, ""))) {
+        const message = "No Google Ads, use o Customer ID numerico da conta de anuncios, sem act_ e sem nome da campanha.";
+        notice.querySelector("span").innerHTML = `<strong>Conta de anúncios inválida.</strong> ${message}`;
+        notice.classList.add("visible");
+        feedback.innerHTML = `<span><strong>Revise a conta de anúncios.</strong> Exemplo correto: 8432723100. O valor atual parece ser de outra plataforma.</span>`;
+        feedback.classList.add("visible");
+        return;
+      }
+      button.disabled = true;
+      button.textContent = "Sincronizando...";
+      notice.querySelector("span").innerHTML = `<strong>Sincronizando API real...</strong> Consultando ${selectedConnectorId === "google" ? "Google Ads" : "a fonte selecionada"}.`;
+      notice.classList.add("visible");
+      fetchJsonWithTimeout(apiUrl(`/api/connectors/${selectedConnectorId}/sync`), { method: "POST" }, 45000)
         .then(async payload => {
           if (payload.status === "synced") {
             notice.querySelector("span").innerHTML = `<strong>API real sincronizada.</strong> ${payload.campaigns || 0} campanhas e ${payload.insights || 0} métricas importadas.`;
@@ -3678,7 +3708,19 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
             activateTab("integrations");
           }
         })
-        .catch(() => window.alert("Não foi possível sincronizar. Verifique credenciais, OAuth e permissões."));
+        .catch(error => {
+          const timeoutMessage = error.name === "AbortError"
+            ? "A API demorou mais de 45 segundos para responder. Tente novamente e confira os Logs do Render se persistir."
+            : error.message;
+          notice.querySelector("span").innerHTML = `<strong>Não foi possível sincronizar.</strong> ${timeoutMessage}`;
+          notice.classList.add("visible");
+          feedback.innerHTML = `<span><strong>Sincronização não concluída.</strong> ${timeoutMessage}</span>`;
+          feedback.classList.add("visible");
+        })
+        .finally(() => {
+          button.disabled = false;
+          button.textContent = "Sincronizar real";
+        });
     });
     document.getElementById("csvFileInput").addEventListener("change", (event) => {
       const file = event.target.files && event.target.files[0];
