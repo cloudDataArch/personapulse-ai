@@ -1755,6 +1755,150 @@ DOCS_HTML = """
 </html>
 """
 
+LEGAL_PAGE_STYLE = """
+  <style>
+    body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#f6f8fb;color:#172033;line-height:1.55}
+    main{max-width:880px;margin:0 auto;padding:40px 24px}
+    header{border-bottom:1px solid #d8dee8;margin-bottom:24px;padding-bottom:18px}
+    h1{margin:0 0 8px;font-size:32px}
+    h2{margin:28px 0 8px;font-size:20px}
+    p,li{color:#42526b}
+    a{color:#0f8b8d;text-decoration:none;font-weight:600}
+    .meta{color:#667085;font-size:14px}
+    .card{background:white;border:1px solid #d8dee8;border-radius:8px;padding:20px;margin:18px 0}
+    footer{margin-top:28px;color:#667085;font-size:14px}
+  </style>
+"""
+
+
+TERMS_HTML = f"""
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PersonaPulse AI - Terms of Service</title>
+  {LEGAL_PAGE_STYLE}
+</head>
+<body>
+<main>
+  <header>
+    <h1>PersonaPulse AI Terms of Service</h1>
+    <p class="meta">Last updated: June 6, 2026</p>
+    <p>These terms apply to PersonaPulse AI, a business analytics and marketing intelligence prototype operated by COBWEB ARQUITETURA E CONSULTORIA DADOS.</p>
+  </header>
+
+  <section class="card">
+    <h2>1. Purpose of the service</h2>
+    <p>PersonaPulse AI helps authorized business users consolidate customer, CRM, campaign, price research, and advertising performance data in order to generate dashboards, recommendations, campaign drafts, and executive reports.</p>
+  </section>
+
+  <section class="card">
+    <h2>2. Authorized use</h2>
+    <p>You may use PersonaPulse AI only with accounts, data sources, advertising accounts, CRM records, and customer data that you are legally authorized to access and process. You are responsible for respecting applicable privacy, advertising, and data protection rules.</p>
+  </section>
+
+  <section class="card">
+    <h2>3. Google Ads API use</h2>
+    <p>When connected to Google Ads, PersonaPulse AI uses OAuth authorization to request permitted campaign, reporting, and account data. The tool is designed for reporting, campaign analysis, and marketing workflow support. It does not sell Google user data, and it does not share Google Ads data with unauthorized third parties.</p>
+  </section>
+
+  <section class="card">
+    <h2>4. User responsibilities</h2>
+    <ul>
+      <li>Provide accurate credentials, account IDs, and business information.</li>
+      <li>Use only consented and lawful customer data.</li>
+      <li>Review campaign suggestions before publishing or using them.</li>
+      <li>Keep API credentials, tokens, and passwords confidential.</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>5. Limitations</h2>
+    <p>PersonaPulse AI is provided as an MVP/prototype and may contain incomplete features, simulated data flows, or integration limits while the product is under development. Recommendations and generated content are decision-support outputs and should be reviewed by a qualified user before commercial use.</p>
+  </section>
+
+  <section class="card">
+    <h2>6. Security and access</h2>
+    <p>Access to integrations may require OAuth credentials, API keys, or database credentials. Production credentials are expected to be stored in backend environment variables and not in the browser.</p>
+  </section>
+
+  <section class="card">
+    <h2>7. Termination and data deletion</h2>
+    <p>You may request removal of stored business data or disconnect integrations by contacting the operator. Access may be suspended if the service is used in violation of these terms or applicable law.</p>
+  </section>
+
+  <footer>
+    <p>Contact: cloud.datascience.arch@gmail.com</p>
+    <p><a href="/privacy">Privacy Policy</a> | <a href="/app">Open PersonaPulse AI</a></p>
+  </footer>
+</main>
+</body>
+</html>
+"""
+
+
+PRIVACY_HTML = f"""
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PersonaPulse AI - Privacy Policy</title>
+  {LEGAL_PAGE_STYLE}
+</head>
+<body>
+<main>
+  <header>
+    <h1>PersonaPulse AI Privacy Policy</h1>
+    <p class="meta">Last updated: June 6, 2026</p>
+    <p>This policy explains how PersonaPulse AI handles information used for dashboards, CRM synchronization, price research, campaign analytics, and advertising integrations.</p>
+  </header>
+
+  <section class="card">
+    <h2>1. Information we process</h2>
+    <p>Depending on the integrations enabled by the user, PersonaPulse AI may process customer records, CRM events, purchases, campaign names, campaign metrics, advertising costs, conversions, attributed revenue, price research results, OAuth tokens, API configuration metadata, and technical logs.</p>
+  </section>
+
+  <section class="card">
+    <h2>2. How information is used</h2>
+    <p>Information is used to calculate dashboards, customer segments, campaign performance, ROI, recommendations, price positioning, and reports for authorized business users.</p>
+  </section>
+
+  <section class="card">
+    <h2>3. Google user data and Google Ads data</h2>
+    <p>Google OAuth data and Google Ads API data are used only to connect the authorized account, retrieve permitted advertising information, and display analytics inside PersonaPulse AI. PersonaPulse AI does not sell Google user data and does not use Google data for unauthorized advertising, profiling, or transfer to unrelated parties.</p>
+  </section>
+
+  <section class="card">
+    <h2>4. Sharing and subprocessors</h2>
+    <p>Data may be processed by infrastructure and integration providers required to operate the service, such as hosting, database, analytics, advertising APIs, and reporting tools selected by the user. PersonaPulse AI does not sell customer data.</p>
+  </section>
+
+  <section class="card">
+    <h2>5. Retention and deletion</h2>
+    <p>Data is retained only as needed for the MVP operation, auditability, reporting, and integration testing. Users may request deletion or disconnection of stored data and credentials by contacting the operator.</p>
+  </section>
+
+  <section class="card">
+    <h2>6. Security</h2>
+    <p>The service is designed to store sensitive integration credentials on the backend through environment variables or protected database records. Access to production systems should be restricted to authorized operators.</p>
+  </section>
+
+  <section class="card">
+    <h2>7. Your rights</h2>
+    <p>Where applicable, users and data subjects may request access, correction, portability, or deletion of personal data, subject to legal and operational requirements.</p>
+  </section>
+
+  <footer>
+    <p>Contact: cloud.datascience.arch@gmail.com</p>
+    <p><a href="/terms">Terms of Service</a> | <a href="/app">Open PersonaPulse AI</a></p>
+  </footer>
+</main>
+</body>
+</html>
+"""
+
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -1812,6 +1956,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_file(APP_DIR / "index.html", "text/html; charset=utf-8")
         if path == "/docs":
             return self.send_html(DOCS_HTML)
+        if path in {"/terms", "/terms-of-service"}:
+            return self.send_html(TERMS_HTML)
+        if path in {"/privacy", "/privacy-policy"}:
+            return self.send_html(PRIVACY_HTML)
         if path == "/health":
             persistence = persistence_status()
             payload = {
