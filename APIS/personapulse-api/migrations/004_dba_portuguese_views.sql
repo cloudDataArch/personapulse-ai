@@ -1,5 +1,15 @@
 CREATE SCHEMA IF NOT EXISTS dba;
 
+DROP VIEW IF EXISTS dba.resumo_banco;
+DROP VIEW IF EXISTS dba.contatos_clientes;
+DROP VIEW IF EXISTS dba.metricas_campanhas;
+DROP VIEW IF EXISTS dba.recomendacoes;
+DROP VIEW IF EXISTS dba.pesquisas_precos;
+DROP VIEW IF EXISTS dba.pedidos;
+DROP VIEW IF EXISTS dba.eventos;
+DROP VIEW IF EXISTS dba.campanhas;
+DROP VIEW IF EXISTS dba.clientes CASCADE;
+
 CREATE OR REPLACE VIEW dba.clientes AS
 SELECT
     (ROW_NUMBER() OVER (ORDER BY c.created_at, c.id) - 1)::BIGINT AS id_cliente,
