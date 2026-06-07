@@ -2,6 +2,7 @@ import json
 import os
 import html
 import random
+import threading
 import urllib.error
 import urllib.request
 import uuid
@@ -33,6 +34,8 @@ DATAFORSEO_LOGIN = os.environ.get("DATAFORSEO_LOGIN", "").strip()
 DATAFORSEO_PASSWORD = os.environ.get("DATAFORSEO_PASSWORD", "").strip()
 DATAFORSEO_TASK_POST_URL = "https://api.dataforseo.com/v3/merchant/google/products/task_post"
 DATAFORSEO_TASK_GET_URL = "https://api.dataforseo.com/v3/merchant/google/products/task_get/advanced"
+POSTGRES_SCHEMA_LOCK = threading.Lock()
+POSTGRES_SCHEMA_READY = False
 
 
 CONNECTOR_PROVIDERS = {
@@ -749,6 +752,17 @@ def postgres_connection():
 
 
 def ensure_postgres_schema():
+    global POSTGRES_SCHEMA_READY
+    if POSTGRES_SCHEMA_READY:
+        return
+    with POSTGRES_SCHEMA_LOCK:
+        if POSTGRES_SCHEMA_READY:
+            return
+        _ensure_postgres_schema_unlocked()
+        POSTGRES_SCHEMA_READY = True
+
+
+def _ensure_postgres_schema_unlocked():
     with postgres_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""

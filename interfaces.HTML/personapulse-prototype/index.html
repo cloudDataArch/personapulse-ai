@@ -2869,7 +2869,16 @@
 
     async function fetchCrmJson(path) {
       const response = await fetch(apiUrl(path));
-      if (!response.ok) throw new Error(`CRM API falhou em ${path}`);
+      if (!response.ok) {
+        let detail = "";
+        try {
+          const payload = await response.json();
+          detail = payload.detail || payload.error || JSON.stringify(payload);
+        } catch (error) {
+          detail = await response.text();
+        }
+        throw new Error(`CRM API falhou em ${path}: ${detail || response.statusText}`);
+      }
       return response.json();
     }
 
@@ -3034,11 +3043,9 @@
       notice.querySelector("span").innerHTML = `<strong>Sincronizando CRM...</strong> Buscando clientes, pedidos e eventos na API local.`;
       notice.classList.add("visible");
       try {
-        let [customersPayload, ordersPayload, eventsPayload] = await Promise.all([
-          fetchCrmJson("/api/crm/customers"),
-          fetchCrmJson("/api/crm/orders"),
-          fetchCrmJson("/api/crm/events"),
-        ]);
+        let customersPayload = await fetchCrmJson("/api/crm/customers");
+        let ordersPayload = await fetchCrmJson("/api/crm/orders");
+        let eventsPayload = await fetchCrmJson("/api/crm/events");
         const crmSeed = await seedCrmDemoIfEmpty(customersPayload, ordersPayload, eventsPayload);
         customersPayload = crmSeed.customersPayload;
         ordersPayload = crmSeed.ordersPayload;
@@ -3050,7 +3057,7 @@
         const seedText = crmSeed.seeded ? " Uma base CRM de demonstração foi criada porque a API estava vazia." : "";
         refreshCombinedData(`<strong>CRM sincronizado com sucesso.</strong> ${crmCustomers.length.toLocaleString("pt-BR")} clientes, ${ordersCount.toLocaleString("pt-BR")} pedidos e ${eventsCount.toLocaleString("pt-BR")} eventos vieram da API.${seedText} Os dados do CSV foram preservados. ${sourceSummary()}.`);
       } catch (error) {
-        notice.querySelector("span").innerHTML = `<strong>Erro ao sincronizar CRM.</strong> Confirme se a API esta ativa em ${apiBaseUrl()}.`;
+        notice.querySelector("span").innerHTML = `<strong>Erro ao sincronizar CRM.</strong> ${error.message || `Confirme se a API esta ativa em ${apiBaseUrl()}.`}`;
         notice.classList.add("visible");
       } finally {
         if (syncButton) {
@@ -3723,14 +3730,14 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
           notice.querySelector("span").innerHTML = "<strong>Sincronizando CRM...</strong> Conectando na API local.";
         }
         try {
-          const [customersRes, ordersRes, eventsRes] = await Promise.all([
-            fetch(apiUrl("/api/crm/customers")),
-            fetch(apiUrl("/api/crm/orders")),
-            fetch(apiUrl("/api/crm/events"))
-          ]);
-          if (!customersRes.ok || !ordersRes.ok || !eventsRes.ok) throw new Error("API CRM indisponivel");
+          const customersRes = await fetch(apiUrl("/api/crm/customers"));
+          if (!customersRes.ok) throw new Error("API CRM indisponivel em clientes");
           const customersPayload = await customersRes.json();
+          const ordersRes = await fetch(apiUrl("/api/crm/orders"));
+          if (!ordersRes.ok) throw new Error("API CRM indisponivel em pedidos");
           const ordersPayload = await ordersRes.json();
+          const eventsRes = await fetch(apiUrl("/api/crm/events"));
+          if (!eventsRes.ok) throw new Error("API CRM indisponivel em eventos");
           const eventsPayload = await eventsRes.json();
           const customers = customersPayload.customers || [];
           const orders = ordersPayload.orders || [];
