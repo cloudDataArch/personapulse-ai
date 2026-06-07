@@ -1219,6 +1219,13 @@ RELATIONAL_COUNT_TABLES = [
     "integrations.connector_configs",
     "bi.powerbi_snapshots",
     "audit.audit_logs",
+    "dba.clientes",
+    "dba.pedidos",
+    "dba.eventos",
+    "dba.campanhas",
+    "dba.metricas_campanhas",
+    "dba.recomendacoes",
+    "dba.pesquisas_precos",
 ]
 
 
