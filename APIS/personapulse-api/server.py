@@ -1295,8 +1295,12 @@ def relational_counts():
     with postgres_connection() as conn:
         with conn.cursor() as cur:
             for table_name in RELATIONAL_COUNT_TABLES:
-                cur.execute(f"SELECT COUNT(*) FROM {table_name}")
-                counts[table_name] = cur.fetchone()[0]
+                try:
+                    cur.execute(f"SELECT COUNT(*) FROM {table_name}")
+                    counts[table_name] = cur.fetchone()[0]
+                except Exception as exc:
+                    counts[table_name] = {"error": str(exc)}
+                    conn.rollback()
     return counts
 
 
@@ -1311,7 +1315,11 @@ def database_status_payload(store):
         "time": now_iso(),
     }
     if using_postgres():
-        payload["relational_counts"] = relational_counts()
+        try:
+            payload["relational_counts"] = relational_counts()
+        except Exception as exc:
+            payload["status"] = "partial"
+            payload["relational_error"] = str(exc)
     return payload
 
 
