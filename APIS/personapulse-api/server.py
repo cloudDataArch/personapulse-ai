@@ -2242,8 +2242,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(status_code, payload)
         try:
             store = load_store()
-        except RuntimeError as exc:
-            return self.send_json(503, {"error": "database_not_configured", "detail": str(exc)})
+        except Exception as exc:
+            return self.send_json(503, {
+                "error": "database_load_failed",
+                "service": "personapulse-api",
+                "persistence": persistence_status(),
+                "database_url_configured": using_postgres(),
+                "detail": str(exc),
+                "time": now_iso(),
+            })
         if path == "/api/price-research":
             product = (query.get("product") or ["Produto"])[0]
             position = (query.get("position") or ["Intermediário"])[0]
