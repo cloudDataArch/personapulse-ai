@@ -9,9 +9,9 @@ ALTER TABLE app.customers
 CREATE INDEX IF NOT EXISTS idx_customers_whatsapp ON app.customers (whatsapp);
 CREATE INDEX IF NOT EXISTS idx_customers_preferred_contact_channel ON app.customers (preferred_contact_channel);
 
-DROP VIEW IF EXISTS dba.contatos_clientes;
-DROP VIEW IF EXISTS dba.clientes;
 DROP VIEW IF EXISTS dba.resumo_banco;
+DROP VIEW IF EXISTS dba.contatos_clientes;
+DROP VIEW IF EXISTS dba.clientes CASCADE;
 
 CREATE OR REPLACE VIEW dba.clientes AS
 SELECT
