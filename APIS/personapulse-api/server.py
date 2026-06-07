@@ -214,6 +214,13 @@ def search_dataforseo_prices(product):
 def build_pricing_result(product, position, items, source, errors=None):
     filtered = remove_price_outliers(items)
     prices = sorted(item["price"] for item in filtered)
+    if len(prices) < 3:
+        return insufficient_pricing_result(
+            product,
+            position,
+            (errors or []) + [{"source": source, "error": "Menos de 3 precos confiaveis foram encontrados no Google Shopping."}],
+            observed_items=len(prices),
+        )
     target = round(price_target_for_position(prices, position))
     return {
         "id": str(uuid.uuid4()),
@@ -263,7 +270,7 @@ def dataforseo_pricing(product, position):
         product,
         position,
         items,
-        "DataForSEO Merchant API: Google Shopping com fontes permitidas",
+        "Google Shopping via DataForSEO Merchant API",
         errors,
     ), errors
 
@@ -329,11 +336,37 @@ def fallback_pricing_reference(product, position, errors):
     }
 
 
+def insufficient_pricing_result(product, position, errors, observed_items=0):
+    return {
+        "id": str(uuid.uuid4()),
+        "created_at": now_iso(),
+        "product": product,
+        "position": position,
+        "source": "Google Shopping via DataForSEO. Dados insuficientes para calcular ticket medio confiavel.",
+        "sourceStatus": price_source_status(),
+        "ticketMedio": 0,
+        "priceSuggestions": [
+            {"label": "Preco competitivo", "value": 0, "reason": "Aguardando pelo menos 3 precos reais observados no Google Shopping."},
+            {"label": "Preco recomendado", "value": 0, "reason": "Sem calculo automatico para evitar ticket medio falso."},
+            {"label": "Preco premium", "value": 0, "reason": "Informe dados reais ou refaca a pesquisa com produto, marca e modelo."},
+        ],
+        "range": {"low": 0, "high": 0},
+        "attrs": [
+            "sem estimativa inventada",
+            "calculo bloqueado por falta de precos reais suficientes",
+            "use produto, marca e modelo para melhorar a busca",
+        ],
+        "sources": [],
+        "observedItems": observed_items,
+        "errors": errors,
+    }
+
+
 def pricing_reference(product, position):
     dataforseo_result, errors = dataforseo_pricing(product, position)
     if dataforseo_result:
         return dataforseo_result
-    return fallback_pricing_reference(product, position, errors)
+    return insufficient_pricing_result(product, position, errors)
 
 
 def remove_price_outliers(items):
@@ -630,6 +663,7 @@ def seed_crm_demo(store, reset=False, customer_count=120):
     sources = ["hubspot", "rd_station", "pipedrive", "salesforce", "crm_demo"]
     event_types = ["product_view", "cart_add", "checkout_start", "email_click", "ad_click"]
     channels = ["E-commerce proprio", "Marketplace", "WhatsApp Vendas", "Loja fisica"]
+    contact_channels = ["E-mail", "WhatsApp", "Instagram", "TikTok", "LinkedIn", "Facebook"]
     today = date.today()
 
     order_count = 0
@@ -643,6 +677,12 @@ def seed_crm_demo(store, reset=False, customer_count=120):
             "name": f"{first} {last}",
             "email": f"{first.lower()}.{last.lower()}.{index}@crm-demo.com",
             "phone": f"+55119{rng.randint(10000000, 99999999)}",
+            "whatsapp": f"+55119{rng.randint(10000000, 99999999)}",
+            "instagram": f"@{first.lower()}.{last.lower()}.{index}",
+            "tiktok": f"@{first.lower()}{last.lower()}{index}",
+            "linkedin": f"https://www.linkedin.com/in/{first.lower()}-{last.lower()}-{index}",
+            "facebook": f"https://www.facebook.com/{first.lower()}.{last.lower()}.{index}",
+            "preferred_contact_channel": rng.choice(contact_channels),
             "city": rng.choice(cities),
             "consent_marketing": rng.random() < 0.9,
             "source": rng.choice(sources),
@@ -905,10 +945,11 @@ def sync_relational_store(cur, store):
             """
             INSERT INTO app.customers (
                 external_id, source, name, email, phone, city, state, country,
+                whatsapp, instagram, tiktok, linkedin, facebook, preferred_contact_channel,
                 consent_marketing, consent_source, behavioral_segment,
                 intent_score, status, raw_payload, created_at, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s::timestamptz, NOW()), COALESCE(%s::timestamptz, NOW()))
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, COALESCE(%s::timestamptz, NOW()), COALESCE(%s::timestamptz, NOW()))
             ON CONFLICT (source, external_id)
             DO UPDATE SET
                 name = EXCLUDED.name,
@@ -917,6 +958,12 @@ def sync_relational_store(cur, store):
                 city = EXCLUDED.city,
                 state = EXCLUDED.state,
                 country = EXCLUDED.country,
+                whatsapp = EXCLUDED.whatsapp,
+                instagram = EXCLUDED.instagram,
+                tiktok = EXCLUDED.tiktok,
+                linkedin = EXCLUDED.linkedin,
+                facebook = EXCLUDED.facebook,
+                preferred_contact_channel = EXCLUDED.preferred_contact_channel,
                 consent_marketing = EXCLUDED.consent_marketing,
                 consent_source = EXCLUDED.consent_source,
                 behavioral_segment = EXCLUDED.behavioral_segment,
@@ -935,6 +982,12 @@ def sync_relational_store(cur, store):
                 item_text(customer, ["city", "cidade"]),
                 item_text(customer, ["state", "estado"]),
                 item_text(customer, ["country", "pais"], "BR"),
+                item_text(customer, ["whatsapp", "telefone_whatsapp", "celular"]),
+                item_text(customer, ["instagram", "perfil_instagram", "insta"]),
+                item_text(customer, ["tiktok", "perfil_tiktok"]),
+                item_text(customer, ["linkedin", "perfil_linkedin"]),
+                item_text(customer, ["facebook", "perfil_facebook"]),
+                item_text(customer, ["preferred_contact_channel", "canal_preferido_contato", "canal_preferido", "canal"]),
                 as_bool(customer.get("consent_marketing") if "consent_marketing" in customer else customer.get("consentimento_marketing")),
                 item_text(customer, ["consent_source", "origem_consentimento"]),
                 item_text(customer, ["behavioral_segment", "segmento", "status"]),
@@ -1220,6 +1273,7 @@ RELATIONAL_COUNT_TABLES = [
     "bi.powerbi_snapshots",
     "audit.audit_logs",
     "dba.clientes",
+    "dba.contatos_clientes",
     "dba.pedidos",
     "dba.eventos",
     "dba.campanhas",
@@ -1276,6 +1330,12 @@ def normalize_imported_customer(row, index, file_name):
         "name": name,
         "email": email,
         "phone": phone,
+        "whatsapp": item_text(row, ["whatsapp", "telefone_whatsapp", "celular", "telefone", "phone"]),
+        "instagram": item_text(row, ["instagram", "perfil_instagram", "insta"]),
+        "tiktok": item_text(row, ["tiktok", "perfil_tiktok"]),
+        "linkedin": item_text(row, ["linkedin", "perfil_linkedin"]),
+        "facebook": item_text(row, ["facebook", "perfil_facebook"]),
+        "preferred_contact_channel": item_text(row, ["canal_preferido_contato", "canal_preferido", "canal"]),
         "city": city,
         "state": state,
         "country": item_text(row, ["pais", "country"], "BR"),

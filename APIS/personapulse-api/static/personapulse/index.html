@@ -1330,6 +1330,7 @@
                 <thead>
                   <tr>
                     <th>Cliente</th>
+                    <th>Contatos</th>
                     <th>Comprou</th>
                     <th>Onde</th>
                     <th>Valor</th>
@@ -2346,6 +2347,12 @@
         nome: pick(customer, ["nome", "name", "cliente"], ""),
         email: pick(customer, ["email"], ""),
         telefone: pick(customer, ["telefone", "phone", "whatsapp"], ""),
+        whatsapp: pick(customer, ["whatsapp", "telefone_whatsapp", "celular", "telefone", "phone"], ""),
+        instagram: pick(customer, ["instagram", "perfil_instagram", "insta"], ""),
+        tiktok: pick(customer, ["tiktok", "perfil_tiktok"], ""),
+        linkedin: pick(customer, ["linkedin", "perfil_linkedin"], ""),
+        facebook: pick(customer, ["facebook", "perfil_facebook"], ""),
+        canal_preferido_contato: pick(customer, ["canal_preferido_contato", "preferred_contact_channel", "canal_preferido", "canal"], ""),
         cidade: pick(customer, ["cidade", "city"], ""),
         origem: sourceName(customer),
         produto: pick(customer, ["produto_comprado", "product_name", "comprou"], ""),
@@ -2821,6 +2828,17 @@
       document.getElementById("customersTable").innerHTML = visibleRows.slice(0, 150).map(customer => {
         const name = pick(customer, ["nome", "name", "cliente"], "Cliente sem nome");
         const email = pick(customer, ["email"], "");
+        const contacts = [
+          ["E-mail", email],
+          ["WhatsApp", pick(customer, ["whatsapp", "telefone_whatsapp", "celular", "telefone", "phone"], "")],
+          ["Instagram", pick(customer, ["instagram", "perfil_instagram", "insta"], "")],
+          ["TikTok", pick(customer, ["tiktok", "perfil_tiktok"], "")],
+          ["LinkedIn", pick(customer, ["linkedin", "perfil_linkedin"], "")],
+          ["Facebook", pick(customer, ["facebook", "perfil_facebook"], "")],
+        ].filter(([, value]) => value).slice(0, 3);
+        const contactsHtml = contacts.length
+          ? contacts.map(([label, value]) => `<span style="color:var(--muted);font-size:12px">${label}: ${value}</span>`).join("<br>")
+          : "-";
         const product = pick(customer, ["produto_comprado", "produto_ultimo_interesse", "produto", "product"], "-");
         const place = pick(customer, ["local_compra", "loja", "canal_compra", "origem"], "-");
         const value = parseMoney(pick(customer, ["valor_compra", "valor", "ticket_medio"], "0"));
@@ -2833,6 +2851,7 @@
         return `
           <tr>
             <td><strong>${name}</strong><br><span style="color:var(--muted);font-size:12px">${email}</span></td>
+            <td>${contactsHtml}</td>
             <td>${product}</td>
             <td>${place}</td>
             <td>${value ? formatBRL(value) : "-"}</td>
@@ -2974,6 +2993,12 @@
           cliente_id: customer.external_id,
           nome: customer.name || "Cliente CRM",
           email: customer.email || "",
+          telefone: customer.phone || "",
+          whatsapp: customer.whatsapp || customer.phone || "",
+          instagram: customer.instagram || "",
+          tiktok: customer.tiktok || "",
+          linkedin: customer.linkedin || "",
+          facebook: customer.facebook || "",
           cidade: customer.city || "",
           origem: customer.source || "crm",
           origem_dados: "CRM",
@@ -2993,7 +3018,8 @@
           carrinho_abandonado: status === "carrinho abandonado" ? "sim" : "nao",
           sensivel_desconto: score < 70 ? "sim" : "nao",
           afinidade_premium: value >= 5000 || score >= 85 ? "alta" : value >= 1000 ? "media" : "baixa",
-          canal_preferido: "E-mail",
+          canal_preferido: customer.preferred_contact_channel || customer.canal_preferido_contato || "E-mail",
+          canal_preferido_contato: customer.preferred_contact_channel || customer.canal_preferido_contato || "E-mail",
           consentimento_marketing: customer.consent_marketing ? "sim" : "nao",
           origem_consentimento: customer.source || "crm",
           acao_recomendada: status === "carrinho abandonado" ? "Recuperar carrinho" : "Gerar campanha personalizada",
@@ -3413,7 +3439,11 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
     }
 
     function renderPricingResearch(data) {
-      const suggestions = data.priceSuggestions.map(item => `- ${item.label}: ${formatBRL(item.value)} | ${item.reason}`).join("\n");
+      const hasReliableTicket = Number(data.ticketMedio || 0) > 0 && Number(data.observedItems || 0) >= 3;
+      const suggestions = data.priceSuggestions.map(item => {
+        const value = Number(item.value || 0) > 0 ? formatBRL(item.value) : "sem preco suficiente";
+        return `- ${item.label}: ${value} | ${item.reason}`;
+      }).join("\n");
       const sources = data.sources && data.sources.length
         ? data.sources.slice(0, 8).map((source, index) => `${index + 1}. ${source.title}${source.price ? ` | ${formatBRL(source.price)}` : ""}\n   ${source.url}`).join("\n")
         : "Nenhuma fonte estruturada retornou referencia nesta execucao.";
@@ -3427,10 +3457,10 @@ Origem da analise: ${data.source}
 Itens oficiais analisados: ${data.observedItems || 0}
 
 Ticket medio estimado para o posicionamento:
-${formatBRL(data.ticketMedio)}
+${hasReliableTicket ? formatBRL(data.ticketMedio) : "Dados insuficientes para calcular ticket medio confiavel"}
 
 Faixa observada/estimada:
-${formatBRL(data.range.low)} a ${formatBRL(data.range.high)}
+${hasReliableTicket ? `${formatBRL(data.range.low)} a ${formatBRL(data.range.high)}` : "Aguardando pelo menos 3 precos reais estruturados"}
 
 3 sugestoes de preco aplicaveis:
 ${suggestions}
@@ -3458,7 +3488,22 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
         if (!response.ok) throw new Error("API indisponivel");
         renderPricingResearch(await response.json());
       } catch (error) {
-        renderPricingResearch(localPricingEstimate(product, position));
+        renderPricingResearch({
+          product,
+          position,
+          source: "Google Shopping via DataForSEO Merchant API",
+          ticketMedio: 0,
+          priceSuggestions: [
+            { label: "Preco competitivo", value: 0, reason: "A API nao retornou dados reais suficientes para sugerir preco." },
+            { label: "Preco recomendado", value: 0, reason: "Refaca a pesquisa ou ajuste o nome do produto." },
+            { label: "Preco premium", value: 0, reason: "Nao vamos estimar valor sem fonte confiavel." },
+          ],
+          range: { low: 0, high: 0 },
+          attrs: [],
+          sources: [],
+          observedItems: 0,
+          sourceStatus: [{ name: "Google Shopping via DataForSEO", status: "aguardando dados reais" }],
+        });
       }
     }
 
@@ -3474,6 +3519,12 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
           cliente: pick(customer, ["nome", "name", "cliente"], ""),
           email: pick(customer, ["email"], ""),
           telefone: pick(customer, ["telefone", "phone", "whatsapp"], ""),
+          whatsapp: pick(customer, ["whatsapp", "telefone_whatsapp", "celular", "telefone", "phone"], ""),
+          instagram: pick(customer, ["instagram", "perfil_instagram", "insta"], ""),
+          tiktok: pick(customer, ["tiktok", "perfil_tiktok"], ""),
+          linkedin: pick(customer, ["linkedin", "perfil_linkedin"], ""),
+          facebook: pick(customer, ["facebook", "perfil_facebook"], ""),
+          canal_preferido_contato: pick(customer, ["canal_preferido_contato", "preferred_contact_channel", "canal_preferido", "canal"], ""),
           comprou: pick(customer, ["produto_comprado", "product_name", "comprou"], ""),
           onde: pick(customer, ["onde_comprou", "store", "canal_preferido"], ""),
           valor: pick(customer, ["valor_compra", "valor", "value"], ""),
