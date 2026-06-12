@@ -91,15 +91,59 @@ CRM_DEMO_PRODUCTS = [
 ]
 
 
-ALLOWED_PRICE_SOURCES = [
-    "amazon",
-    "mercado livre",
-    "magalu",
-    "magazine luiza",
-    "shopee",
-    "tiktok shop",
-    "casas bahia",
-]
+PRICE_SOURCE_TIERS = {
+    "entrada": [
+        "mercadolivre.com.br",
+        "shopee.com.br",
+        "amazon.com.br",
+        "magazineluiza.com.br",
+        "casasbahia.com.br",
+    ],
+    "intermediario": [
+        "amazon.com.br",
+        "magazineluiza.com.br",
+        "mercadolivre.com.br",
+        "casasbahia.com.br",
+        "kabum.com.br",
+    ],
+    "premium": [
+        "amazon.com.br",
+        "magazineluiza.com.br",
+        "sephora.com.br",
+        "epocacosmeticos.com.br",
+        "belezanaweb.com.br",
+        "thebeautybox.com.br",
+        "fastshop.com.br",
+    ],
+    "luxo": [
+        "sephora.com.br",
+        "epocacosmeticos.com.br",
+        "belezanaweb.com.br",
+        "thebeautybox.com.br",
+        "farfetch.com.br",
+        "dior.com",
+        "chanel.com",
+        "yslbeauty.com.br",
+    ],
+}
+
+PRICE_SOURCE_LABELS = {
+    "mercadolivre.com.br": "Mercado Livre",
+    "shopee.com.br": "Shopee",
+    "amazon.com.br": "Amazon",
+    "magazineluiza.com.br": "Magalu",
+    "casasbahia.com.br": "Casas Bahia",
+    "kabum.com.br": "KaBuM!",
+    "sephora.com.br": "Sephora",
+    "epocacosmeticos.com.br": "Epoca Cosmeticos",
+    "belezanaweb.com.br": "Beleza na Web",
+    "thebeautybox.com.br": "The Beauty Box",
+    "fastshop.com.br": "Fast Shop",
+    "farfetch.com.br": "Farfetch",
+    "dior.com": "Dior",
+    "chanel.com": "Chanel",
+    "yslbeauty.com.br": "YSL Beauty",
+}
 
 
 def dataforseo_configured():
@@ -108,9 +152,8 @@ def dataforseo_configured():
 
 def price_source_status():
     return [
-        {"name": "DataForSEO Merchant API", "status": "active" if dataforseo_configured() else "needs_credentials", "needsCredentials": True},
-        {"name": "Google Shopping via DataForSEO", "status": "active" if dataforseo_configured() else "waiting_dataforseo", "needsCredentials": True},
-        {"name": "Amazon via DataForSEO", "status": "phase_2", "needsCredentials": True},
+        {"name": "Google Shopping", "status": "active" if dataforseo_configured() else "needs_credentials", "needsCredentials": True},
+        {"name": "Fontes por posicionamento", "status": "active" if dataforseo_configured() else "waiting_credentials", "needsCredentials": True},
         {"name": "APIs oficiais por marketplace", "status": "phase_2", "needsCredentials": True},
     ]
 
@@ -159,29 +202,71 @@ def parse_dataforseo_price(value):
         return None
 
 
-def source_allowed(source_name):
-    normalized = str(source_name or "").lower()
-    return any(allowed in normalized for allowed in ALLOWED_PRICE_SOURCES)
+def normalize_position(position):
+    import unicodedata as _unicodedata
+
+    normalized = _unicodedata.normalize("NFKD", str(position or "intermediario").lower())
+    normalized = "".join(char for char in normalized if not _unicodedata.combining(char))
+    if "lux" in normalized:
+        return "luxo"
+    if "prem" in normalized:
+        return "premium"
+    if "entrada" in normalized or "basico" in normalized:
+        return "entrada"
+    return "intermediario"
 
 
-def extract_dataforseo_items(payload):
+def source_domain(item):
+    for key in ("domain", "source_domain", "seller_domain"):
+        value = item.get(key)
+        if value:
+            return str(value).lower().replace("www.", "")
+    for key in ("url", "product_url"):
+        value = item.get(key)
+        if value:
+            hostname = urlparse(str(value)).hostname or ""
+            return hostname.lower().replace("www.", "")
+    source = str(item.get("source") or item.get("seller") or item.get("merchant") or "").lower()
+    for domain, label in PRICE_SOURCE_LABELS.items():
+        if domain in source or label.lower() in source:
+            return domain
+    return ""
+
+
+def source_allowed(item, position):
+    domain = source_domain(item)
+    allowed_domains = PRICE_SOURCE_TIERS.get(normalize_position(position), PRICE_SOURCE_TIERS["intermediario"])
+    return any(domain == allowed or domain.endswith("." + allowed) for allowed in allowed_domains)
+
+
+def source_label(item):
+    domain = source_domain(item)
+    if domain:
+        for allowed, label in PRICE_SOURCE_LABELS.items():
+            if domain == allowed or domain.endswith("." + allowed):
+                return label
+    return item.get("source") or item.get("seller") or item.get("merchant") or "Google Shopping"
+
+
+def extract_dataforseo_items(payload, position):
     items = []
     for task in payload.get("tasks", []):
         for result in task.get("result") or []:
             for item in result.get("items") or []:
-                source = item.get("source") or item.get("seller") or item.get("merchant") or item.get("domain")
                 title = item.get("title") or item.get("name") or "Produto"
                 price = parse_dataforseo_price(item.get("price") or item.get("price_from") or item.get("extracted_price"))
                 if price is None or price <= 0:
                     continue
-                if source and not source_allowed(source):
+                if not source_allowed(item, position):
                     continue
+                domain = source_domain(item)
                 items.append({
-                    "marketplace": source or "Google Shopping",
+                    "marketplace": source_label(item),
                     "title": title,
                     "price": round(price, 2),
                     "currency": item.get("currency") or "BRL",
                     "url": item.get("url") or item.get("product_url") or "",
+                    "domain": domain,
                     "rating": item.get("rating"),
                     "reviews_count": item.get("reviews_count"),
                     "raw": item,
@@ -189,15 +274,31 @@ def extract_dataforseo_items(payload):
     return items
 
 
-def search_dataforseo_prices(product):
+def price_search_keyword(product, position):
+    normalized_position = normalize_position(position)
+    product = str(product or "").strip()
+    terms = [product, "preco", "comprar"]
+    lower = product.lower()
+    if "perfume" in lower and "marca" not in lower:
+        terms.extend(["perfume importado" if normalized_position in ("premium", "luxo") else "perfume"])
+    if normalized_position == "entrada":
+        terms.extend(["oferta", "melhor preco"])
+    elif normalized_position == "premium":
+        terms.extend(["premium", "loja confiavel"])
+    elif normalized_position == "luxo":
+        terms.extend(["luxo", "grife", "original"])
+    return " ".join(dict.fromkeys(term for term in terms if term))
+
+
+def search_dataforseo_prices(product, position):
     if not dataforseo_configured():
         raise RuntimeError("DATAFORSEO_LOGIN e DATAFORSEO_PASSWORD ainda nao foram configurados.")
     payload = [{
-        "keyword": product,
+        "keyword": price_search_keyword(product, position),
         "location_code": 2076,
         "language_code": "pt",
         "se_domain": "google.com.br",
-        "depth": 30,
+        "depth": 80,
     }]
     task_payload = dataforseo_post(payload)
     tasks = task_payload.get("tasks") or []
@@ -208,15 +309,31 @@ def search_dataforseo_prices(product):
     for _ in range(5):
         time.sleep(1)
         last_payload = dataforseo_get(task_id)
-        items = extract_dataforseo_items(last_payload)
+        items = extract_dataforseo_items(last_payload, position)
         if items:
             return items
-    return extract_dataforseo_items(last_payload)
+    return extract_dataforseo_items(last_payload, position)
+
+
+def representative_price_items(items):
+    filtered = sorted(remove_price_outliers(items), key=lambda item: item["price"])
+    if len(filtered) < 3:
+        return filtered
+    low = filtered[0]
+    high = filtered[-1]
+    mid_price = median([item["price"] for item in filtered])
+    middle_candidates = [item for item in filtered[1:-1]] or filtered
+    middle = min(middle_candidates, key=lambda item: abs(item["price"] - mid_price))
+    selected = []
+    for item in (low, middle, high):
+        if item not in selected:
+            selected.append(item)
+    return selected
 
 
 def build_pricing_result(product, position, items, source, errors=None):
-    filtered = remove_price_outliers(items)
-    prices = sorted(item["price"] for item in filtered)
+    selected_items = representative_price_items(items)
+    prices = sorted(item["price"] for item in selected_items)
     if len(prices) < 3:
         return insufficient_pricing_result(
             product,
@@ -224,7 +341,7 @@ def build_pricing_result(product, position, items, source, errors=None):
             (errors or []) + [{"source": source, "error": "Menos de 3 precos confiaveis foram encontrados no Google Shopping."}],
             observed_items=len(prices),
         )
-    target = round(price_target_for_position(prices, position))
+    target = round(sum(prices) / len(prices))
     return {
         "id": str(uuid.uuid4()),
         "created_at": now_iso(),
@@ -234,27 +351,27 @@ def build_pricing_result(product, position, items, source, errors=None):
         "sourceStatus": price_source_status(),
         "ticketMedio": target,
         "priceSuggestions": [
-            {"label": "Preco competitivo", "value": round(target * 0.94), "reason": "Referencia agressiva baseada em ofertas estruturadas filtradas."},
-            {"label": "Preco recomendado", "value": target, "reason": "Equilibra posicionamento, mediana de mercado e atratividade."},
-            {"label": "Preco premium", "value": round(target * 1.12), "reason": "Indicado quando a oferta comprova diferenciais, garantia ou entrega superior."},
+            {"label": "Preco minimo observado", "value": round(prices[0]), "reason": "Menor preco real encontrado em fonte compativel com o posicionamento."},
+            {"label": "Ticket medio sugerido", "value": target, "reason": "Media entre menor, medio e maior preco real observado."},
+            {"label": "Preco alto observado", "value": round(prices[-1]), "reason": "Maior preco real encontrado apos remover outliers."},
         ],
         "range": {"low": round(min(prices)), "high": round(max(prices))},
         "attrs": [
-            "precos vindos de API estruturada",
-            "fontes filtradas por marketplaces permitidos",
+            "precos reais vindos do Google Shopping",
+            "fontes filtradas por posicionamento de mercado",
             "outliers removidos antes do calculo",
-            "posicionamento aplicado sobre a distribuicao observada",
+            "ticket medio calculado a partir de 3 referencias reais",
         ],
         "sources": [
             {
                 "title": f"{item['marketplace']}: {item['title']}",
                 "price": item["price"],
                 "url": item["url"],
-                "domain": item.get("marketplace", ""),
+                "domain": item.get("domain") or item.get("marketplace", ""),
             }
-            for item in filtered[:8]
+            for item in selected_items
         ],
-        "observedItems": len(filtered),
+        "observedItems": len(selected_items),
         "errors": errors or [],
     }
 
@@ -262,81 +379,20 @@ def build_pricing_result(product, position, items, source, errors=None):
 def dataforseo_pricing(product, position):
     errors = []
     try:
-        items = search_dataforseo_prices(product)
+        items = search_dataforseo_prices(product, position)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError, RuntimeError) as exc:
-        errors.append({"source": "DataForSEO Merchant API", "error": str(exc)})
+        errors.append({"source": "Google Shopping", "error": str(exc)})
         return None, errors
     if not items:
-        errors.append({"source": "DataForSEO Merchant API", "error": "Nenhuma fonte permitida retornou preco estruturado."})
+        errors.append({"source": "Google Shopping", "error": "Nenhuma fonte permitida retornou preco estruturado."})
         return None, errors
     return build_pricing_result(
         product,
         position,
         items,
-        "Google Shopping via DataForSEO Merchant API",
+        "Google Shopping com filtro por posicionamento",
         errors,
     ), errors
-
-
-def fallback_pricing_reference(product, position, errors):
-    lower = product.lower()
-    base = {
-        "low": 400,
-        "avg": 850,
-        "high": 1600,
-        "attrs": ["acabamento superior", "garantia", "boa reputacao", "design diferenciado"],
-    }
-    if any(term in lower for term in ["notebook", "laptop", "dell", "macbook"]):
-        base = {
-            "low": 2800,
-            "avg": 5200,
-            "high": 13500,
-            "attrs": ["processador atual", "16 GB de memoria RAM", "SSD NVMe", "tela Full HD ou superior", "garantia nacional"],
-        }
-    elif any(term in lower for term in ["bicicleta", "mtb", "bike"]):
-        base = {
-            "low": 2500,
-            "avg": 7200,
-            "high": 15000,
-            "attrs": ["quadro leve", "suspensao responsiva", "freios a disco hidraulicos", "transmissao Shimano ou SRAM", "pneus de alta aderencia"],
-        }
-    elif any(term in lower for term in ["carro de bebe", "carrinho", "bebe"]):
-        base = {
-            "low": 1200,
-            "avg": 2800,
-            "high": 5900,
-            "attrs": ["travel system", "bebe conforto", "estrutura leve", "fechamento compacto", "certificacao de seguranca"],
-        }
-    elif "perfume" in lower:
-        base = {
-            "low": 180,
-            "avg": 420,
-            "high": 950,
-            "attrs": ["fixacao", "familia olfativa", "frasco premium", "marca percebida", "exclusividade"],
-        }
-
-    multipliers = {"Entrada": 0.75, "IntermediÃ¡rio": 1, "Intermediario": 1, "Premium": 1.35, "Luxo": 1.9}
-    multiplier = multipliers.get(position, 1)
-    avg = round(base["avg"] * multiplier)
-    return {
-        "id": str(uuid.uuid4()),
-        "created_at": now_iso(),
-        "product": product,
-        "position": position,
-        "source": "Estimativa temporaria. Configure DataForSEO para precos reais estruturados.",
-        "sourceStatus": price_source_status(),
-        "ticketMedio": avg,
-        "priceSuggestions": [
-            {"label": "Preco competitivo", "value": round(avg * 0.88), "reason": "Bom para testar conversao sem destruir posicionamento."},
-            {"label": "Preco recomendado", "value": avg, "reason": "Equilibra valor percebido, margem e atratividade."},
-            {"label": "Preco premium", "value": round(avg * 1.18), "reason": "Aplicavel quando a oferta destaca atributos superiores e garantia."},
-        ],
-        "range": {"low": round(base["low"] * multiplier), "high": round(base["high"] * multiplier)},
-        "attrs": base["attrs"],
-        "sources": [],
-        "observedItems": 0,
-        "errors": errors,
-    }
 
 
 def insufficient_pricing_result(product, position, errors, observed_items=0):
@@ -345,13 +401,13 @@ def insufficient_pricing_result(product, position, errors, observed_items=0):
         "created_at": now_iso(),
         "product": product,
         "position": position,
-        "source": "Google Shopping via DataForSEO. Dados insuficientes para calcular ticket medio confiavel.",
+        "source": "Google Shopping. Dados insuficientes para calcular ticket medio confiavel.",
         "sourceStatus": price_source_status(),
         "ticketMedio": 0,
         "priceSuggestions": [
-            {"label": "Preco competitivo", "value": 0, "reason": "Aguardando pelo menos 3 precos reais observados no Google Shopping."},
-            {"label": "Preco recomendado", "value": 0, "reason": "Sem calculo automatico para evitar ticket medio falso."},
-            {"label": "Preco premium", "value": 0, "reason": "Informe dados reais ou refaca a pesquisa com produto, marca e modelo."},
+            {"label": "Preco minimo observado", "value": 0, "reason": "Aguardando pelo menos 3 precos reais observados no Google Shopping."},
+            {"label": "Ticket medio sugerido", "value": 0, "reason": "Sem calculo automatico para evitar ticket medio falso."},
+            {"label": "Preco alto observado", "value": 0, "reason": "Informe o produto em linguagem natural e escolha o posicionamento correto."},
         ],
         "range": {"low": 0, "high": 0},
         "attrs": [
@@ -380,132 +436,6 @@ def remove_price_outliers(items):
     low_limit = mid * 0.35
     high_limit = mid * 2.5
     return [item for item in items if low_limit <= item["price"] <= high_limit]
-
-
-def price_target_for_position(prices, position):
-    prices = sorted(prices)
-    if not prices:
-        return 0
-    mid = median(prices)
-    q1 = prices[max(0, len(prices) // 4)]
-    q3 = prices[min(len(prices) - 1, (len(prices) * 3) // 4)]
-    if position == "Entrada":
-        return q1
-    if position in ("Premium", "Luxo"):
-        return q3 if position == "Premium" else q3 * 1.15
-    return mid
-
-
-def legacy_official_marketplace_pricing(product, position):
-    items = []
-    errors = []
-    try:
-        items.extend(search_mercado_livre_prices(product))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError) as exc:
-        errors.append({"source": "Mercado Livre", "error": str(exc)})
-
-    filtered = remove_price_outliers(items)
-    prices = sorted(item["price"] for item in filtered)
-    if not prices:
-        return None, errors
-
-    target = round(price_target_for_position(prices, position))
-    competitive = round(target * 0.94)
-    recommended = target
-    premium = round(target * 1.12)
-    return {
-        "product": product,
-        "position": position,
-        "source": "APIs oficiais de marketplace",
-        "sourceStatus": marketplace_source_status(),
-        "ticketMedio": target,
-        "priceSuggestions": [
-            {"label": "Preco competitivo", "value": competitive, "reason": "Referencia agressiva baseada em ofertas oficiais filtradas."},
-            {"label": "Preco recomendado", "value": recommended, "reason": "Equilibra posicionamento, mediana de mercado e atratividade."},
-            {"label": "Preco premium", "value": premium, "reason": "Indicado quando a oferta comprova diferenciais, garantia ou entrega superior."},
-        ],
-        "range": {"low": round(min(prices)), "high": round(max(prices))},
-        "attrs": [
-            "precos vindos de API oficial",
-            "outliers removidos antes do calculo",
-            "fontes rastreaveis por marketplace",
-            "posicionamento aplicado sobre a distribuicao real",
-        ],
-        "sources": [
-            {
-                "title": f"{item['marketplace']}: {item['title']}",
-                "price": item["price"],
-                "url": item["url"],
-                "domain": "mercadolivre.com.br",
-            }
-            for item in filtered[:8]
-        ],
-        "observedItems": len(filtered),
-        "errors": errors,
-    }, errors
-
-
-def legacy_marketplace_pricing_reference(product, position):
-    official_result, errors = legacy_official_marketplace_pricing(product, position)
-    if official_result:
-        return official_result
-
-    lower = product.lower()
-    base = {
-        "low": 400,
-        "avg": 850,
-        "high": 1600,
-        "attrs": ["acabamento superior", "garantia", "boa reputacao", "design diferenciado"],
-    }
-    if any(term in lower for term in ["notebook", "laptop", "dell", "macbook"]):
-        base = {
-            "low": 2800,
-            "avg": 5200,
-            "high": 13500,
-            "attrs": ["processador atual", "16 GB de memoria RAM", "SSD NVMe", "tela Full HD ou superior", "garantia nacional"],
-        }
-    elif any(term in lower for term in ["bicicleta", "mtb", "bike"]):
-        base = {
-            "low": 2500,
-            "avg": 7200,
-            "high": 15000,
-            "attrs": ["quadro leve", "suspensao responsiva", "freios a disco hidraulicos", "transmissao Shimano ou SRAM", "pneus de alta aderencia"],
-        }
-    elif any(term in lower for term in ["carro de bebe", "carrinho", "bebe"]):
-        base = {
-            "low": 1200,
-            "avg": 2800,
-            "high": 5900,
-            "attrs": ["travel system", "bebe conforto", "estrutura leve", "fechamento compacto", "certificacao de seguranca"],
-        }
-    elif "perfume" in lower:
-        base = {
-            "low": 180,
-            "avg": 420,
-            "high": 950,
-            "attrs": ["fixacao", "familia olfativa", "frasco premium", "marca percebida", "exclusividade"],
-        }
-
-    multipliers = {"Entrada": 0.75, "Intermediário": 1, "Intermediario": 1, "Premium": 1.35, "Luxo": 1.9}
-    multiplier = multipliers.get(position, 1)
-    avg = round(base["avg"] * multiplier)
-    return {
-        "product": product,
-        "position": position,
-        "source": "Estimativa temporaria. Nenhuma API oficial retornou preco nesta consulta.",
-        "sourceStatus": marketplace_source_status(),
-        "ticketMedio": avg,
-        "priceSuggestions": [
-            {"label": "Preco competitivo", "value": round(avg * 0.88), "reason": "Bom para testar conversao sem destruir posicionamento."},
-            {"label": "Preco recomendado", "value": avg, "reason": "Equilibra valor percebido, margem e atratividade."},
-            {"label": "Preco premium", "value": round(avg * 1.18), "reason": "Aplicavel quando a oferta destaca atributos superiores e garantia."},
-        ],
-        "range": {"low": round(base["low"] * multiplier), "high": round(base["high"] * multiplier)},
-        "attrs": base["attrs"],
-        "sources": [],
-        "observedItems": 0,
-        "errors": errors,
-    }
 
 
 def powerbi_summary_defaults():
@@ -1191,6 +1121,13 @@ def sync_relational_store(cur, store):
     for research in store.get("price_researches", []):
         suggestions = research.get("priceSuggestions") or []
         suggestion_by_label = {item.get("label", ""): item for item in suggestions}
+        def suggestion_value(*labels):
+            for label in labels:
+                value = item_float(suggestion_by_label.get(label, {}), ["value"])
+                if value:
+                    return value
+            return 0
+
         cur.execute(
             """
             INSERT INTO app.price_researches (
@@ -1208,11 +1145,11 @@ def sync_relational_store(cur, store):
                 research.get("id") or str(uuid.uuid4()),
                 item_text(research, ["product", "product_name"], "Produto"),
                 item_text(research, ["position", "positioning"]),
-                item_text(research, ["source"], "DataForSEO Merchant API"),
+                item_text(research, ["source"], "Google Shopping"),
                 item_float(research, ["ticketMedio", "ticket_medio"]),
-                item_float(suggestion_by_label.get("Preco competitivo", {}), ["value"]),
-                item_float(suggestion_by_label.get("Preco recomendado", {}), ["value"]),
-                item_float(suggestion_by_label.get("Preco premium", {}), ["value"]),
+                suggestion_value("Preco minimo observado", "Preco competitivo"),
+                suggestion_value("Ticket medio sugerido", "Preco recomendado"),
+                suggestion_value("Preco alto observado", "Preco premium"),
                 item_float(research.get("range") or {}, ["low"]),
                 item_float(research.get("range") or {}, ["high"]),
                 item_int(research, ["observedItems", "observed_items"]),

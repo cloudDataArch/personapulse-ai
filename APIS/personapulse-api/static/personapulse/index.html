@@ -1500,7 +1500,7 @@
               <div style="height:12px"></div>
               <button class="btn primary" id="generatePricing">
                 <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16l3-4 3 2 5-7"/></svg></span>
-                Pesquisar DataForSEO
+                Pesquisar Google
               </button>
             </div>
           </article>
@@ -3380,65 +3380,28 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
       return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
     }
 
-    function localPricingEstimate(product, position) {
-      const lower = product.toLowerCase();
-      let base = { low: 400, avg: 850, high: 1600, attrs: ["acabamento superior", "garantia", "boa reputacao", "design diferenciado"] };
-      if (lower.includes("carro de bebe") || lower.includes("carrinho") || lower.includes("bebe")) {
-        base = {
-          low: 1200,
-          avg: 2800,
-          high: 5900,
-          attrs: ["travel system", "bebe conforto", "estrutura leve", "fechamento compacto", "certificacao de seguranca", "conforto para recem-nascido"],
-        };
-      } else if (lower.includes("bicicleta") || lower.includes("mtb") || lower.includes("bike")) {
-        base = {
-          low: 2500,
-          avg: 7200,
-          high: 15000,
-          attrs: ["quadro leve", "suspensao responsiva", "freios a disco hidraulicos", "transmissao Shimano ou SRAM", "pneus de alta aderencia"],
-        };
-      } else if (lower.includes("perfume")) {
-        base = {
-          low: 180,
-          avg: 420,
-          high: 950,
-          attrs: ["fixacao", "familia olfativa", "frasco premium", "marca percebida", "exclusividade"],
-        };
-      } else if (lower.includes("notebook") || lower.includes("laptop") || lower.includes("dell") || lower.includes("macbook")) {
-        base = {
-          low: 2800,
-          avg: 5200,
-          high: 13500,
-          attrs: ["processador Intel Core i5/i7 ou Ryzen 5/7", "16 GB de memoria RAM", "SSD NVMe", "tela Full HD ou superior", "garantia nacional", "acabamento premium"],
-        };
-      }
-
-      const multipliers = {
-        "Entrada": 0.75,
-        "Intermediário": 1,
-        "Premium": 1.35,
-        "Luxo": 1.9,
-      };
-      const m = multipliers[position] || 1.35;
-      const avg = Math.round(base.avg * m);
+    function localPricingUnavailable(product, position) {
       return {
         product,
         position,
-        source: "Estimativa temporaria. Configure DataForSEO para precos reais estruturados.",
+        source: "Google Shopping. Configure a API para precos reais estruturados.",
         sourceStatus: [
-          { name: "DataForSEO Merchant API", status: "needs_credentials", needsCredentials: true },
-          { name: "Google Shopping via DataForSEO", status: "waiting_dataforseo", needsCredentials: true },
-          { name: "Amazon via DataForSEO", status: "phase_2", needsCredentials: true },
+          { name: "Google Shopping", status: "needs_credentials", needsCredentials: true },
+          { name: "Fontes por posicionamento", status: "waiting_credentials", needsCredentials: true },
           { name: "APIs oficiais por marketplace", status: "phase_2", needsCredentials: true },
         ],
-        ticketMedio: avg,
+        ticketMedio: 0,
         priceSuggestions: [
-          { label: "Preco competitivo", value: Math.round(avg * 0.88), reason: "Bom para entrada rapida em campanha e teste de conversao." },
-          { label: "Preco recomendado", value: avg, reason: "Equilibra percepcao de valor, margem e posicionamento." },
-          { label: "Preco premium", value: Math.round(avg * 1.18), reason: "Aplicavel quando a oferta destaca atributos superiores e garantia." },
+          { label: "Preco minimo observado", value: 0, reason: "Aguardando fonte real do Google Shopping." },
+          { label: "Ticket medio sugerido", value: 0, reason: "Sem calculo local para evitar preco falso." },
+          { label: "Preco alto observado", value: 0, reason: "Aguardando fonte real do Google Shopping." },
         ],
-        range: { low: Math.round(base.low * m), high: Math.round(base.high * m) },
-        attrs: base.attrs,
+        range: { low: 0, high: 0 },
+        attrs: [
+          "sem estimativa inventada",
+          "aguardando fonte real do Google Shopping",
+          "use produto, categoria e posicionamento para melhorar a busca",
+        ],
         sources: [],
         observedItems: 0,
       };
@@ -3460,15 +3423,15 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
       document.getElementById("pricingOutput").textContent = `Produto pesquisado: ${data.product}
 Posicionamento: ${data.position}
 Origem da analise: ${data.source}
-Itens oficiais analisados: ${data.observedItems || 0}
+Referencias reais usadas no calculo: ${data.observedItems || 0}
 
-Ticket medio estimado para o posicionamento:
+Ticket medio calculado para o posicionamento:
 ${hasReliableTicket ? formatBRL(data.ticketMedio) : "Dados insuficientes para calcular ticket medio confiavel"}
 
-Faixa observada/estimada:
+Faixa observada:
 ${hasReliableTicket ? `${formatBRL(data.range.low)} a ${formatBRL(data.range.high)}` : "Aguardando pelo menos 3 precos reais estruturados"}
 
-3 sugestoes de preco aplicaveis:
+3 referencias de preco:
 ${suggestions}
 
 Atributos que justificam o preco:
@@ -3478,7 +3441,7 @@ Fontes e referencias:
 ${sources}
 
 Status da fonte de preços:
-${sourceStatus || "- DataForSEO Merchant API: aguardando credenciais"}
+${sourceStatus || "- Google Shopping: aguardando credenciais"}
 
 Como usar na campanha:
 Use estes valores para orientar posicionamento e oferta. A copy final deve vender desejo, beneficio e diferenciacao, nao mostrar dados tecnicos internos.`;
@@ -3497,18 +3460,18 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
         renderPricingResearch({
           product,
           position,
-          source: "Google Shopping via DataForSEO Merchant API",
+          source: "Google Shopping",
           ticketMedio: 0,
           priceSuggestions: [
-            { label: "Preco competitivo", value: 0, reason: "A API nao retornou dados reais suficientes para sugerir preco." },
-            { label: "Preco recomendado", value: 0, reason: "Refaca a pesquisa ou ajuste o nome do produto." },
-            { label: "Preco premium", value: 0, reason: "Nao vamos estimar valor sem fonte confiavel." },
+            { label: "Preco minimo observado", value: 0, reason: "A API nao retornou dados reais suficientes." },
+            { label: "Ticket medio sugerido", value: 0, reason: "Refaca a pesquisa ou ajuste o nome do produto." },
+            { label: "Preco alto observado", value: 0, reason: "Nao vamos estimar valor sem fonte confiavel." },
           ],
           range: { low: 0, high: 0 },
           attrs: [],
           sources: [],
           observedItems: 0,
-          sourceStatus: [{ name: "Google Shopping via DataForSEO", status: "aguardando dados reais" }],
+          sourceStatus: [{ name: "Google Shopping", status: "aguardando dados reais" }],
         });
       }
     }
