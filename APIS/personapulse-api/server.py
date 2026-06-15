@@ -2,13 +2,12 @@ import json
 import os
 import html
 import random
+import re
 import threading
+import unicodedata
 import urllib.error
 import urllib.request
 import uuid
-import base64
-import time
-from statistics import median
 from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -30,10 +29,19 @@ API_VERSION = "v20.0"
 ASSETS_DIR = BASE_DIR / "assets"
 APP_DIR = BASE_DIR / "static" / "personapulse"
 STORE_KEY = "default"
-DATAFORSEO_LOGIN = os.environ.get("DATAFORSEO_LOGIN", "").strip()
-DATAFORSEO_PASSWORD = os.environ.get("DATAFORSEO_PASSWORD", "").strip()
-DATAFORSEO_TASK_POST_URL = "https://api.dataforseo.com/v3/merchant/google/products/task_post"
-DATAFORSEO_TASK_GET_URL = "https://api.dataforseo.com/v3/merchant/google/products/task_get/advanced"
+GOOGLE_CSE_API_KEY = (
+    os.environ.get("GOOGLE_CSE_API_KEY")
+    or os.environ.get("GOOGLE_CUSTOM_SEARCH_API_KEY")
+    or os.environ.get("GOOGLE_API_KEY")
+    or ""
+).strip()
+GOOGLE_CSE_ID = (
+    os.environ.get("GOOGLE_CSE_ID")
+    or os.environ.get("GOOGLE_CUSTOM_SEARCH_CX")
+    or os.environ.get("GOOGLE_CX")
+    or ""
+).strip()
+GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1"
 POSTGRES_SCHEMA_LOCK = threading.Lock()
 POSTGRES_SCHEMA_READY = False
 
@@ -91,124 +99,64 @@ CRM_DEMO_PRODUCTS = [
 ]
 
 
-PRICE_SOURCE_TIERS = {
-    "entrada": [
-        "mercadolivre.com.br",
-        "shopee.com.br",
-        "amazon.com.br",
-        "magazineluiza.com.br",
-        "casasbahia.com.br",
-    ],
-    "intermediario": [
-        "amazon.com.br",
-        "magazineluiza.com.br",
-        "mercadolivre.com.br",
-        "casasbahia.com.br",
-        "kabum.com.br",
-    ],
-    "premium": [
-        "amazon.com.br",
-        "magazineluiza.com.br",
-        "sephora.com.br",
-        "epocacosmeticos.com.br",
-        "belezanaweb.com.br",
-        "thebeautybox.com.br",
-        "fastshop.com.br",
-    ],
-    "luxo": [
-        "sephora.com.br",
-        "epocacosmeticos.com.br",
-        "belezanaweb.com.br",
-        "thebeautybox.com.br",
-        "farfetch.com.br",
-        "dior.com",
-        "chanel.com",
-        "yslbeauty.com.br",
-    ],
-}
-
 PRICE_SOURCE_LABELS = {
     "mercadolivre.com.br": "Mercado Livre",
-    "shopee.com.br": "Shopee",
     "amazon.com.br": "Amazon",
-    "magazineluiza.com.br": "Magalu",
-    "casasbahia.com.br": "Casas Bahia",
-    "kabum.com.br": "KaBuM!",
-    "sephora.com.br": "Sephora",
-    "epocacosmeticos.com.br": "Epoca Cosmeticos",
-    "belezanaweb.com.br": "Beleza na Web",
-    "thebeautybox.com.br": "The Beauty Box",
-    "fastshop.com.br": "Fast Shop",
-    "farfetch.com.br": "Farfetch",
-    "dior.com": "Dior",
-    "chanel.com": "Chanel",
-    "yslbeauty.com.br": "YSL Beauty",
+    "shopee.com.br": "Shopee",
+}
+
+PRICE_SEARCH_DOMAINS = sorted(PRICE_SOURCE_LABELS)
+ENTRY_EXCLUSION_TERMS = {
+    "carbon", "carbono", "elite", "pro", "professional", "slx", "xt", "xtr",
+    "sram", "rockshox", "sid", "full suspension", "full-suspension", "fs",
+    "competition", "comp", "speed", "eletrica", "eletrica", "ebike", "e-bike",
 }
 
 
-def dataforseo_configured():
-    return bool(DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD)
+def google_cse_configured():
+    return bool(GOOGLE_CSE_API_KEY and GOOGLE_CSE_ID)
 
 
 def price_source_status():
     return [
-        {"name": "Google Shopping", "status": "active" if dataforseo_configured() else "needs_credentials", "needsCredentials": True},
-        {"name": "Fontes por posicionamento", "status": "active" if dataforseo_configured() else "waiting_credentials", "needsCredentials": True},
-        {"name": "APIs oficiais por marketplace", "status": "phase_2", "needsCredentials": True},
+        {"name": "Google Custom Search API", "status": "active" if google_cse_configured() else "needs_credentials", "needsCredentials": True},
+        {"name": "Mercado Livre via Google", "status": "active" if google_cse_configured() else "waiting_google_cse", "needsCredentials": True},
+        {"name": "Amazon via Google", "status": "active" if google_cse_configured() else "waiting_google_cse", "needsCredentials": True},
+        {"name": "Shopee via Google", "status": "active" if google_cse_configured() else "waiting_google_cse", "needsCredentials": True},
     ]
 
 
-def dataforseo_headers():
-    credentials = f"{DATAFORSEO_LOGIN}:{DATAFORSEO_PASSWORD}".encode("utf-8")
-    return {
-        "Authorization": "Basic " + base64.b64encode(credentials).decode("ascii"),
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "User-Agent": "PersonaPulseAI/1.0",
-    }
-
-
-def dataforseo_post(payload, timeout=25):
-    request = urllib.request.Request(
-        DATAFORSEO_TASK_POST_URL,
-        data=json.dumps(payload).encode("utf-8"),
-        headers=dataforseo_headers(),
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
-
-
-def dataforseo_get(task_id, timeout=25):
-    request = urllib.request.Request(
-        f"{DATAFORSEO_TASK_GET_URL}/{task_id}",
-        headers=dataforseo_headers(),
-        method="GET",
-    )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
-
-
-def parse_dataforseo_price(value):
-    if isinstance(value, dict):
-        for key in ("current", "regular", "value", "price"):
-            if value.get(key) not in (None, ""):
-                return parse_dataforseo_price(value.get(key))
-    if isinstance(value, str):
-        value = value.replace("R$", "").replace(".", "").replace(",", ".").strip()
-    try:
-        return float(value)
-    except (TypeError, ValueError):
+def parse_brl_price(value, allow_plain_integer=False):
+    if value is None:
         return None
+    if isinstance(value, (int, float)):
+        price = float(value)
+        return round(price, 2) if 10 <= price <= 500000 else None
+    if isinstance(value, str):
+        value = html.unescape(value)
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    pattern = r"(?:R\$\s*)?(\d{1,3}(?:\.\d{3})+,\d{2}|\d{1,6},\d{2}|\d{2,7}\.\d{2})"
+    if allow_plain_integer:
+        pattern = r"(?:R\$\s*)?(\d{1,3}(?:\.\d{3})+,\d{2}|\d{1,6},\d{2}|\d{2,7}\.\d{2}|\d{2,7})"
+    match = re.search(pattern, text)
+    if not match:
+        return None
+    raw = match.group(1)
+    if "," in raw:
+        raw = raw.replace(".", "").replace(",", ".")
+    try:
+        price = float(raw)
+    except ValueError:
+        return None
+    if price < 10 or price > 500000:
+        return None
+    return round(price, 2)
 
 
 def normalize_position(position):
-    import unicodedata as _unicodedata
-
-    normalized = _unicodedata.normalize("NFKD", str(position or "intermediario").lower())
-    normalized = "".join(char for char in normalized if not _unicodedata.combining(char))
-    if "lux" in normalized:
-        return "luxo"
+    normalized = normalize_text(position or "intermediario")
+    if "lux" in normalized or "alto" in normalized or "custo" in normalized:
+        return "alto_custo"
     if "prem" in normalized:
         return "premium"
     if "entrada" in normalized or "basico" in normalized:
@@ -216,12 +164,44 @@ def normalize_position(position):
     return "intermediario"
 
 
+def normalize_text(value):
+    normalized = unicodedata.normalize("NFKD", str(value or "").lower())
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def product_tokens(product):
+    ignored = {"bicicleta", "bike", "mtb", "adulto", "adulta", "aro", "preco", "comprar", "basica", "basico"}
+    tokens = re.findall(r"[a-z0-9]+", normalize_text(product))
+    return [token for token in tokens if len(token) > 1 and token not in ignored]
+
+
+def item_matches_product(item, product, position):
+    text = normalize_text(" ".join([
+        item.get("title") or "",
+        item.get("snippet") or "",
+        item.get("htmlSnippet") or "",
+    ]))
+    if not text:
+        return False
+    tokens = product_tokens(product)
+    required_tokens = [token for token in tokens if token.isdigit() or len(token) >= 4]
+    if required_tokens:
+        matched = sum(1 for token in required_tokens if token in text)
+        if matched < max(1, min(2, len(required_tokens))):
+            return False
+    if normalize_position(position) == "entrada":
+        if any(term in text for term in ENTRY_EXCLUSION_TERMS):
+            return False
+    return True
+
+
 def source_domain(item):
-    for key in ("domain", "source_domain", "seller_domain"):
+    for key in ("domain", "source_domain", "seller_domain", "displayLink"):
         value = item.get(key)
         if value:
             return str(value).lower().replace("www.", "")
-    for key in ("url", "product_url"):
+    for key in ("url", "product_url", "link"):
         value = item.get(key)
         if value:
             hostname = urlparse(str(value)).hostname or ""
@@ -235,8 +215,7 @@ def source_domain(item):
 
 def source_allowed(item, position):
     domain = source_domain(item)
-    allowed_domains = PRICE_SOURCE_TIERS.get(normalize_position(position), PRICE_SOURCE_TIERS["intermediario"])
-    return any(domain == allowed or domain.endswith("." + allowed) for allowed in allowed_domains)
+    return any(domain == allowed or domain.endswith("." + allowed) for allowed in PRICE_SEARCH_DOMAINS)
 
 
 def source_label(item):
@@ -245,103 +224,186 @@ def source_label(item):
         for allowed, label in PRICE_SOURCE_LABELS.items():
             if domain == allowed or domain.endswith("." + allowed):
                 return label
-    return item.get("source") or item.get("seller") or item.get("merchant") or "Google Shopping"
-
-
-def extract_dataforseo_items(payload, position):
-    items = []
-    for task in payload.get("tasks", []):
-        for result in task.get("result") or []:
-            for item in result.get("items") or []:
-                title = item.get("title") or item.get("name") or "Produto"
-                price = parse_dataforseo_price(item.get("price") or item.get("price_from") or item.get("extracted_price"))
-                if price is None or price <= 0:
-                    continue
-                if not source_allowed(item, position):
-                    continue
-                domain = source_domain(item)
-                items.append({
-                    "marketplace": source_label(item),
-                    "title": title,
-                    "price": round(price, 2),
-                    "currency": item.get("currency") or "BRL",
-                    "url": item.get("url") or item.get("product_url") or "",
-                    "domain": domain,
-                    "rating": item.get("rating"),
-                    "reviews_count": item.get("reviews_count"),
-                    "raw": item,
-                })
-    return items
+    return item.get("source") or item.get("seller") or item.get("merchant") or item.get("displayLink") or "Google"
 
 
 def price_search_keyword(product, position):
-    normalized_position = normalize_position(position)
     product = str(product or "").strip()
     terms = [product, "preco", "comprar"]
     lower = product.lower()
     if "perfume" in lower and "marca" not in lower:
-        terms.extend(["perfume importado" if normalized_position in ("premium", "luxo") else "perfume"])
-    if normalized_position == "entrada":
-        terms.extend(["oferta", "melhor preco"])
-    elif normalized_position == "premium":
-        terms.extend(["premium", "loja confiavel"])
-    elif normalized_position == "luxo":
-        terms.extend(["luxo", "grife", "original"])
+        terms.append("perfume")
     return " ".join(dict.fromkeys(term for term in terms if term))
 
 
-def search_dataforseo_prices(product, position):
-    if not dataforseo_configured():
-        raise RuntimeError("DATAFORSEO_LOGIN e DATAFORSEO_PASSWORD ainda nao foram configurados.")
-    payload = [{
-        "keyword": price_search_keyword(product, position),
-        "location_code": 2076,
-        "language_code": "pt",
-        "se_domain": "google.com.br",
-        "depth": 80,
-    }]
-    task_payload = dataforseo_post(payload)
-    tasks = task_payload.get("tasks") or []
-    task_id = tasks[0].get("id") if tasks else None
-    if not task_id:
-        raise ValueError("DataForSEO nao retornou task id.")
-    last_payload = {}
-    for _ in range(5):
-        time.sleep(1)
-        last_payload = dataforseo_get(task_id)
-        items = extract_dataforseo_items(last_payload, position)
-        if items:
-            return items
-    return extract_dataforseo_items(last_payload, position)
+def google_price_queries(product, position):
+    product = re.sub(r"\s+", " ", str(product or "")).strip()
+    keyword = price_search_keyword(product, position)
+    sites = " OR ".join(f"site:{domain}" for domain in PRICE_SEARCH_DOMAINS)
+    entry_hint = "basica entrada barato economica" if normalize_position(position) == "entrada" else ""
+    return [
+        f'{keyword} {entry_hint} "R$"'.strip(),
+        f"{product} preco mercado livre amazon shopee",
+        f"{keyword} ({sites})",
+        f"{product} Mercado Livre Amazon Shopee",
+    ]
 
 
-def representative_price_items(items):
-    filtered = sorted(remove_price_outliers(items), key=lambda item: item["price"])
-    if len(filtered) < 3:
-        return filtered
-    low = filtered[0]
-    high = filtered[-1]
-    mid_price = median([item["price"] for item in filtered])
-    middle_candidates = [item for item in filtered[1:-1]] or filtered
-    middle = min(middle_candidates, key=lambda item: abs(item["price"] - mid_price))
-    selected = []
-    for item in (low, middle, high):
-        if item not in selected:
-            selected.append(item)
-    return selected
+def google_cse_request(query, timeout=20):
+    if not google_cse_configured():
+        raise RuntimeError("GOOGLE_CSE_API_KEY e GOOGLE_CSE_ID ainda nao foram configurados.")
+    params = {
+        "key": GOOGLE_CSE_API_KEY,
+        "cx": GOOGLE_CSE_ID,
+        "q": query,
+        "num": 10,
+        "gl": "br",
+        "cr": "countryBR",
+        "hl": "pt-BR",
+        "safe": "off",
+    }
+    request = urllib.request.Request(
+        GOOGLE_CSE_URL + "?" + urlencode(params),
+        headers={"Accept": "application/json", "User-Agent": "PersonaPulseAI/1.0"},
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def price_candidates_from_google_item(item):
+    candidates = [item.get("title"), item.get("snippet"), item.get("htmlSnippet")]
+    pagemap = item.get("pagemap") or {}
+    for group_name in ("offer", "offers", "product", "metatags"):
+        for entry in pagemap.get(group_name) or []:
+            if not isinstance(entry, dict):
+                continue
+            for key, value in entry.items():
+                key = str(key).lower()
+                if "price" in key or "amount" in key or key in ("lowprice", "highprice"):
+                    candidates.append((value, True))
+    prices = []
+    seen = set()
+    for candidate in candidates:
+        allow_plain_integer = False
+        if isinstance(candidate, tuple):
+            candidate, allow_plain_integer = candidate
+        price = parse_brl_price(candidate, allow_plain_integer=allow_plain_integer)
+        if price is None or price in seen:
+            continue
+        seen.add(price)
+        prices.append(price)
+    return prices
+
+
+def extract_google_price_items(payload, product, position):
+    items = []
+    for item in payload.get("items") or []:
+        if not source_allowed(item, position):
+            continue
+        if not item_matches_product(item, product, position):
+            continue
+        domain = source_domain(item)
+        title = html.unescape(item.get("title") or "Produto")
+        link = item.get("link") or ""
+        for price in price_candidates_from_google_item(item):
+            items.append({
+                "marketplace": source_label(item),
+                "title": title,
+                "price": price,
+                "currency": "BRL",
+                "url": link,
+                "domain": domain,
+                "snippet": html.unescape(item.get("snippet") or ""),
+                "raw": item,
+            })
+    return items
+
+
+def dedupe_price_items(items):
+    deduped = []
+    seen = set()
+    for item in sorted(items, key=lambda entry: (entry.get("url", ""), entry.get("price", 0))):
+        key = (item.get("url"), round(item.get("price", 0), 2))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+def search_google_prices(product, position):
+    items = []
+    errors = []
+    for query in google_price_queries(product, position):
+        try:
+            payload = google_cse_request(query)
+            items.extend(extract_google_price_items(payload, product, position))
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError, RuntimeError) as exc:
+            errors.append({"source": "Google Custom Search API", "error": str(exc), "query": query})
+    return dedupe_price_items(items), errors
+
+
+def percentile_value(prices, percentile):
+    prices = sorted(prices)
+    if not prices:
+        return 0
+    if len(prices) == 1:
+        return prices[0]
+    index = (len(prices) - 1) * percentile
+    lower = int(index)
+    upper = min(lower + 1, len(prices) - 1)
+    weight = index - lower
+    return prices[lower] * (1 - weight) + prices[upper] * weight
+
+
+def price_bucket(prices, low_percentile, high_percentile, min_items=1):
+    low = percentile_value(prices, low_percentile)
+    high = percentile_value(prices, high_percentile)
+    bucket_prices = [price for price in prices if low <= price <= high]
+    if len(bucket_prices) < min_items:
+        center = (low_percentile + high_percentile) / 2
+        ranked = sorted(prices, key=lambda price: abs(price - percentile_value(prices, center)))
+        bucket_prices = sorted(ranked[:min(min_items, len(prices))])
+    if not bucket_prices:
+        bucket_prices = [percentile_value(prices, (low_percentile + high_percentile) / 2)]
+    avg = sum(bucket_prices) / len(bucket_prices)
+    return {"low": round(min(bucket_prices)), "avg": round(avg), "high": round(max(bucket_prices)), "items": len(bucket_prices)}
+
+
+def price_buckets(prices):
+    basic_min_items = min(3, len(prices))
+    return {
+        "basico": price_bucket(prices, 0.00, 0.40, min_items=basic_min_items),
+        "intermediario": price_bucket(prices, 0.25, 0.70, min_items=min(2, len(prices))),
+        "premium": price_bucket(prices, 0.55, 0.90, min_items=min(2, len(prices))),
+        "alto_custo": price_bucket(prices, 0.75, 1.00, min_items=min(2, len(prices))),
+    }
+
+
+def selected_bucket_key(position):
+    normalized = normalize_position(position)
+    if normalized == "entrada":
+        return "basico"
+    if normalized == "premium":
+        return "premium"
+    if normalized == "alto_custo":
+        return "alto_custo"
+    return "intermediario"
 
 
 def build_pricing_result(product, position, items, source, errors=None):
-    selected_items = representative_price_items(items)
-    prices = sorted(item["price"] for item in selected_items)
+    filtered = sorted(remove_price_outliers(items), key=lambda item: item["price"])
+    prices = sorted(item["price"] for item in filtered)
     if len(prices) < 3:
         return insufficient_pricing_result(
             product,
             position,
-            (errors or []) + [{"source": source, "error": "Menos de 3 precos confiaveis foram encontrados no Google Shopping."}],
+            (errors or []) + [{"source": source, "error": "Menos de 3 precos confiaveis foram encontrados no Google."}],
             observed_items=len(prices),
         )
-    target = round(sum(prices) / len(prices))
+    buckets = price_buckets(prices)
+    target = buckets[selected_bucket_key(position)]["avg"]
     return {
         "id": str(uuid.uuid4()),
         "created_at": now_iso(),
@@ -351,16 +413,19 @@ def build_pricing_result(product, position, items, source, errors=None):
         "sourceStatus": price_source_status(),
         "ticketMedio": target,
         "priceSuggestions": [
-            {"label": "Preco minimo observado", "value": round(prices[0]), "reason": "Menor preco real encontrado em fonte compativel com o posicionamento."},
-            {"label": "Ticket medio sugerido", "value": target, "reason": "Media entre menor, medio e maior preco real observado."},
-            {"label": "Preco alto observado", "value": round(prices[-1]), "reason": "Maior preco real encontrado apos remover outliers."},
+            {"label": "Basico", "value": buckets["basico"]["avg"], "reason": f"Faixa de entrada observada no Google: R$ {buckets['basico']['low']} a R$ {buckets['basico']['high']}."},
+            {"label": "Intermediario", "value": buckets["intermediario"]["avg"], "reason": f"Faixa central de mercado: R$ {buckets['intermediario']['low']} a R$ {buckets['intermediario']['high']}."},
+            {"label": "Premium", "value": buckets["premium"]["avg"], "reason": f"Faixa superior com maior valor percebido: R$ {buckets['premium']['low']} a R$ {buckets['premium']['high']}."},
+            {"label": "Alto custo", "value": buckets["alto_custo"]["avg"], "reason": f"Topo da distribuicao encontrada: R$ {buckets['alto_custo']['low']} a R$ {buckets['alto_custo']['high']}."},
         ],
         "range": {"low": round(min(prices)), "high": round(max(prices))},
+        "priceBuckets": buckets,
         "attrs": [
-            "precos reais vindos do Google Shopping",
-            "fontes filtradas por posicionamento de mercado",
+            "precos encontrados pelo Google",
+            "fontes limitadas a Mercado Livre, Amazon e Shopee",
+            "resultados incompatíveis com o produto foram descartados",
             "outliers removidos antes do calculo",
-            "ticket medio calculado a partir de 3 referencias reais",
+            "ticket medio escolhido pela faixa de posicionamento",
         ],
         "sources": [
             {
@@ -369,28 +434,23 @@ def build_pricing_result(product, position, items, source, errors=None):
                 "url": item["url"],
                 "domain": item.get("domain") or item.get("marketplace", ""),
             }
-            for item in selected_items
+            for item in filtered[:8]
         ],
-        "observedItems": len(selected_items),
+        "observedItems": len(filtered),
         "errors": errors or [],
     }
 
 
-def dataforseo_pricing(product, position):
-    errors = []
-    try:
-        items = search_dataforseo_prices(product, position)
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, ValueError, RuntimeError) as exc:
-        errors.append({"source": "Google Shopping", "error": str(exc)})
-        return None, errors
+def google_pricing(product, position):
+    items, errors = search_google_prices(product, position)
     if not items:
-        errors.append({"source": "Google Shopping", "error": "Nenhuma fonte permitida retornou preco estruturado."})
+        errors.append({"source": "Google Custom Search API", "error": "Nenhum preco foi encontrado em marketplaces pelo Google."})
         return None, errors
     return build_pricing_result(
         product,
         position,
         items,
-        "Google Shopping com filtro por posicionamento",
+        "Google Custom Search API",
         errors,
     ), errors
 
@@ -401,15 +461,22 @@ def insufficient_pricing_result(product, position, errors, observed_items=0):
         "created_at": now_iso(),
         "product": product,
         "position": position,
-        "source": "Google Shopping. Dados insuficientes para calcular ticket medio confiavel.",
+        "source": "Google Custom Search API. Dados insuficientes para calcular ticket medio confiavel.",
         "sourceStatus": price_source_status(),
         "ticketMedio": 0,
         "priceSuggestions": [
-            {"label": "Preco minimo observado", "value": 0, "reason": "Aguardando pelo menos 3 precos reais observados no Google Shopping."},
-            {"label": "Ticket medio sugerido", "value": 0, "reason": "Sem calculo automatico para evitar ticket medio falso."},
-            {"label": "Preco alto observado", "value": 0, "reason": "Informe o produto em linguagem natural e escolha o posicionamento correto."},
+            {"label": "Basico", "value": 0, "reason": "Aguardando pelo menos 3 precos reais observados no Google."},
+            {"label": "Intermediario", "value": 0, "reason": "Sem calculo automatico para evitar ticket medio falso."},
+            {"label": "Premium", "value": 0, "reason": "Informe produto, marca e modelo para melhorar a busca."},
+            {"label": "Alto custo", "value": 0, "reason": "Sem referencias suficientes para topo de mercado."},
         ],
         "range": {"low": 0, "high": 0},
+        "priceBuckets": {
+            "basico": {"low": 0, "avg": 0, "high": 0, "items": 0},
+            "intermediario": {"low": 0, "avg": 0, "high": 0, "items": 0},
+            "premium": {"low": 0, "avg": 0, "high": 0, "items": 0},
+            "alto_custo": {"low": 0, "avg": 0, "high": 0, "items": 0},
+        },
         "attrs": [
             "sem estimativa inventada",
             "calculo bloqueado por falta de precos reais suficientes",
@@ -422,19 +489,18 @@ def insufficient_pricing_result(product, position, errors, observed_items=0):
 
 
 def pricing_reference(product, position):
-    dataforseo_result, errors = dataforseo_pricing(product, position)
-    if dataforseo_result:
-        return dataforseo_result
+    google_result, errors = google_pricing(product, position)
+    if google_result:
+        return google_result
     return insufficient_pricing_result(product, position, errors)
 
 
 def remove_price_outliers(items):
     prices = sorted(item["price"] for item in items if item.get("price"))
-    if len(prices) < 4:
+    if len(prices) < 8:
         return items
-    mid = median(prices)
-    low_limit = mid * 0.35
-    high_limit = mid * 2.5
+    low_limit = percentile_value(prices, 0.05) * 0.7
+    high_limit = percentile_value(prices, 0.95) * 1.3
     return [item for item in items if low_limit <= item["price"] <= high_limit]
 
 

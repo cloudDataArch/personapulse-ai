@@ -1492,8 +1492,8 @@
                   <select id="pricingPosition">
                     <option>Premium</option>
                     <option>Intermediário</option>
-                    <option>Entrada</option>
-                    <option>Luxo</option>
+                    <option>Básico</option>
+                    <option>Alto custo</option>
                   </select>
                 </label>
               </div>
@@ -3384,23 +3384,32 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
       return {
         product,
         position,
-        source: "Google Shopping. Configure a API para precos reais estruturados.",
+        source: "Google Custom Search API. Configure a API para precos reais estruturados.",
         sourceStatus: [
-          { name: "Google Shopping", status: "needs_credentials", needsCredentials: true },
-          { name: "Fontes por posicionamento", status: "waiting_credentials", needsCredentials: true },
-          { name: "APIs oficiais por marketplace", status: "phase_2", needsCredentials: true },
+          { name: "Google Custom Search API", status: "needs_credentials", needsCredentials: true },
+          { name: "Mercado Livre via Google", status: "waiting_google_cse", needsCredentials: true },
+          { name: "Amazon via Google", status: "waiting_google_cse", needsCredentials: true },
+          { name: "Shopee via Google", status: "waiting_google_cse", needsCredentials: true },
         ],
         ticketMedio: 0,
         priceSuggestions: [
-          { label: "Preco minimo observado", value: 0, reason: "Aguardando fonte real do Google Shopping." },
-          { label: "Ticket medio sugerido", value: 0, reason: "Sem calculo local para evitar preco falso." },
-          { label: "Preco alto observado", value: 0, reason: "Aguardando fonte real do Google Shopping." },
+          { label: "Basico", value: 0, reason: "Aguardando fonte real do Google." },
+          { label: "Intermediario", value: 0, reason: "Sem calculo local para evitar preco falso." },
+          { label: "Premium", value: 0, reason: "Aguardando fonte real do Google." },
+          { label: "Alto custo", value: 0, reason: "Aguardando referencias do topo de mercado." },
         ],
         range: { low: 0, high: 0 },
+        priceBuckets: {
+          basico: { low: 0, avg: 0, high: 0, items: 0 },
+          intermediario: { low: 0, avg: 0, high: 0, items: 0 },
+          premium: { low: 0, avg: 0, high: 0, items: 0 },
+          alto_custo: { low: 0, avg: 0, high: 0, items: 0 },
+        },
         attrs: [
           "sem estimativa inventada",
-          "aguardando fonte real do Google Shopping",
-          "use produto, categoria e posicionamento para melhorar a busca",
+          "aguardando fonte real do Google",
+          "fontes limitadas a Mercado Livre, Amazon e Shopee",
+          "use produto, marca, modelo e aro para melhorar a busca",
         ],
         sources: [],
         observedItems: 0,
@@ -3431,7 +3440,7 @@ ${hasReliableTicket ? formatBRL(data.ticketMedio) : "Dados insuficientes para ca
 Faixa observada:
 ${hasReliableTicket ? `${formatBRL(data.range.low)} a ${formatBRL(data.range.high)}` : "Aguardando pelo menos 3 precos reais estruturados"}
 
-3 referencias de preco:
+Faixas de preco:
 ${suggestions}
 
 Atributos que justificam o preco:
@@ -3441,7 +3450,7 @@ Fontes e referencias:
 ${sources}
 
 Status da fonte de preços:
-${sourceStatus || "- Google Shopping: aguardando credenciais"}
+${sourceStatus || "- Google Custom Search API: aguardando credenciais"}
 
 Como usar na campanha:
 Use estes valores para orientar posicionamento e oferta. A copy final deve vender desejo, beneficio e diferenciacao, nao mostrar dados tecnicos internos.`;

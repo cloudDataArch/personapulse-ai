@@ -1,6 +1,6 @@
 # PersonaPulse AI
 
-Prototipo navegavel do PersonaPulse AI com dashboard, clientes, campanhas, pesquisa de precos, central de integracoes e endpoints para Power BI.
+Aplicacao PersonaPulse AI com dashboard, clientes, campanhas, pesquisa de precos, central de integracoes e endpoints para Power BI.
 
 ## Estrutura
 
@@ -8,7 +8,6 @@ Prototipo navegavel do PersonaPulse AI com dashboard, clientes, campanhas, pesqu
 - `APIS/personapulse-api/static/personapulse/index.html`: frontend publicado junto da API.
 - `APIS/personapulse-api/README.md`: referencia de endpoints da API.
 - `APIS/personapulse-api/RENDER_DEPLOY.md`: guia de deploy no Render.
-- `interfaces.HTML/personapulse-prototype/index.html`: frontend navegavel do MVP.
 - `interfaces.PNG/`: imagens de interface, previews e organograma.
 - `CSV/`: bases demonstrativas de clientes.
 - `DOCUMENTOS/`: arquivos DOCX de arquitetura, organograma, comparativo e roteiro.
@@ -46,7 +45,7 @@ http://127.0.0.1:8088/docs
 Frontend local:
 
 ```text
-interfaces.HTML/personapulse-prototype/index.html
+http://127.0.0.1:8088/app
 ```
 
 ## Deploy no Render

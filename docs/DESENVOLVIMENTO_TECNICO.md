@@ -21,8 +21,7 @@ flowchart LR
 
 ## Principais componentes
 
-- Frontend navegavel: `interfaces.HTML/personapulse-prototype/index.html`
-- Frontend publicado no Render: `APIS/personapulse-api/static/personapulse/index.html`
+- Frontend da aplicacao: `APIS/personapulse-api/static/personapulse/index.html`
 - Backend/API: `APIS/personapulse-api/server.py`
 - Configuracao Render: `render.yaml`
 - Documentacao da API: `APIS/personapulse-api/README.md`
