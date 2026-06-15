@@ -195,7 +195,7 @@ def build_doc():
             ("Backend API", "Python HTTP service", "Receives CRM data, handles OAuth callbacks, synchronizes Ads data, calculates indicators and exposes Power BI endpoints."),
             ("Persistence", "PostgreSQL", "Stores customers, orders, events, campaigns, campaign metrics, recommendations, connector configurations, audit records and price research results."),
             ("External API", "Google Ads API", "Retrieves authorized campaign and metric data using OAuth and developer token access."),
-            ("External API", "DataForSEO Merchant API", "Retrieves structured market price references for product research where configured."),
+            ("External API", "Google Custom Search API", "Retrieves market price references for product research where configured."),
             ("Reporting", "Power BI endpoints", "Provides JSON endpoints for executive summary, customers, campaigns and data sources."),
         ],
     )
@@ -308,7 +308,7 @@ def build_doc():
             ("Power BI endpoints", "Implemented"),
             ("Google Ads OAuth configuration", "Implemented"),
             ("Google Ads real sync", "Implemented, pending Google Developer Token approval for non-test accounts"),
-            ("DataForSEO product price research", "Implemented when credentials are configured"),
+            ("Google CSE product price research", "Implemented when credentials are configured"),
         ],
     )
 
