@@ -1158,6 +1158,26 @@
             <strong>0%</strong>
             <em>sem base importada</em>
           </article>
+          <article class="panel kpi" data-kpi-target="campaignSchedule" title="Ver gasto de mídia">
+            <small>Gasto de mídia</small>
+            <strong id="kpiSpend">R$ 0</strong>
+            <em>fontes Ads</em>
+          </article>
+          <article class="panel kpi" data-kpi-target="campaignSchedule" title="Ver ROI consolidado">
+            <small>ROI real</small>
+            <strong id="kpiRoi">0%</strong>
+            <em>receita vs gasto</em>
+          </article>
+          <article class="panel kpi" data-kpi-target="campaignSchedule" title="Ver conversões">
+            <small>Conversões</small>
+            <strong id="kpiConversions">0</strong>
+            <em>campanhas conectadas</em>
+          </article>
+          <article class="panel kpi" data-kpi-target="customers" title="Ver ticket médio real">
+            <small>Ticket médio real</small>
+            <strong id="kpiTicket">R$ 0</strong>
+            <em>pedidos CRM</em>
+          </article>
         </div>
 
         <article class="panel">
@@ -1184,12 +1204,27 @@
 
         <div style="height:16px"></div>
 
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Saúde das fontes</h2>
+              <span id="systemHealthSummary">Aguardando leitura operacional do backend</span>
+            </div>
+            <span class="tag blue" id="systemHealthTag">Verificando</span>
+          </div>
+          <div class="panel-body">
+            <div class="integration-grid" id="sourceHealthCards"></div>
+          </div>
+        </article>
+
+        <div style="height:16px"></div>
+
         <div class="grid two">
           <article class="panel">
             <div class="panel-header">
               <div>
                 <h2>Intencao por segmento</h2>
-                <span>Score simulado da propensao de compra</span>
+                <span>Score calculado a partir dos dados carregados</span>
               </div>
               <span class="tag teal">Hoje</span>
             </div>
@@ -1797,7 +1832,7 @@
       { id: "snapchat", name: "Snapchat Ads", status: "Planejado", data: "Campanhas, ad squads, público jovem e stats de mídia", shortName: "Snap", scopes: "Snap OAuth + ad account + marketing stats permissions", docs: "https://developers.snap.com/api/marketing-api/" },
       { id: "amazon", name: "Amazon Ads", status: "Planejado", data: "Campanhas, ASINs, produtos, vendas atribuídas e ROAS", shortName: "Amazon", scopes: "Amazon Ads OAuth + profile_id + advertiser account", docs: "https://advertising.amazon.com/API" },
       { id: "mercadolivre", name: "Mercado Livre Ads", status: "Planejado", data: "Produtos, anúncios, vendas atribuídas e marketplace", shortName: "Mercado Livre", scopes: "OAuth Mercado Livre + seller/account + advertising endpoints", docs: "https://developers.mercadolivre.com.br/" },
-      { id: "crm", name: "CRM", status: "Conectado no simulador", data: "Clientes, pedidos, eventos e recomendações de volta", shortName: "CRM", scopes: "API key/webhook do CRM + endpoints de clientes, pedidos e eventos", docs: "/docs" },
+      { id: "crm", name: "CRM", status: "API local", data: "Clientes, pedidos, eventos e recomendações de volta", shortName: "CRM", scopes: "API key/webhook do CRM + endpoints de clientes, pedidos e eventos", docs: "/docs" },
     ];
 
     function iconTag(label, color) {
@@ -1809,7 +1844,7 @@
       if (!container) return;
       container.innerHTML = integrationSources.map(source => {
         const { id, name, status, data, shortName } = source;
-        const color = status.includes("Conectado") ? "green" : status.includes("Próximo") ? "blue" : "gold";
+        const color = status.includes("Conectado") || status.includes("API local") ? "green" : status.includes("Próximo") ? "blue" : "gold";
         const action = name === "CRM"
             ? `<button class="btn primary" onclick="window.syncCrmData && window.syncCrmData()">Sincronizar</button>`
             : `<button class="btn primary" onclick="window.openConnectorSetup && window.openConnectorSetup('${id}')">Configurar API real</button>`;
@@ -2242,7 +2277,7 @@
       segments = [];
       campaignPerformance = [];
       campaignSchedule = [];
-      actions = [["Conecte uma fonte de dados", "Use uma base, CRM, Ads, marketplace ou campanha propria para alimentar clientes, segmentos, campanhas e agenda."]];
+      actions = [["Conecte uma fonte de dados", "Use uma base, CRM, Ads ou campanha propria para alimentar clientes, segmentos, campanhas e agenda."]];
       selectedCampaignId = "general";
       selectedCampaignIds.clear();
       activeCampaignDetailId = null;
@@ -2251,6 +2286,10 @@
     function resetDashboardCards() {
       document.getElementById("kpiCustomers").textContent = "0";
       document.getElementById("kpiCampaigns").textContent = "0";
+      document.getElementById("kpiSpend").textContent = "R$ 0";
+      document.getElementById("kpiRoi").textContent = "0%";
+      document.getElementById("kpiConversions").textContent = "0";
+      document.getElementById("kpiTicket").textContent = "R$ 0";
       const cards = document.querySelectorAll(".kpi");
       const revenueCard = document.querySelectorAll(".kpi strong")[1];
       const lgpdCard = document.querySelectorAll(".kpi strong")[3];
@@ -2277,6 +2316,87 @@
     function sourceSummary() {
       const counts = sourceCounts();
       return `CSV: ${counts.csv.toLocaleString("pt-BR")} | CRM: ${counts.crm.toLocaleString("pt-BR")} | Meta Ads: ${counts.metaAdsCustomers.toLocaleString("pt-BR")} clientes e ${counts.metaAds.toLocaleString("pt-BR")} campanhas | Outros Ads: ${counts.externalAdsCustomers.toLocaleString("pt-BR")} clientes e ${counts.externalAds.toLocaleString("pt-BR")} campanhas | Total clientes: ${counts.total.toLocaleString("pt-BR")}`;
+    }
+
+    function safeText(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[char]));
+    }
+
+    function sourceStatusLabel(status) {
+      const labels = {
+        active: ["Ativa", "green"],
+        configured: ["Configurada", "blue"],
+        empty: ["Sem dados", "gold"],
+        planned: ["Planejada", "gold"],
+        error: ["Erro", "red"],
+      };
+      return labels[status] || [status || "Indefinida", "gold"];
+    }
+
+    function renderSourceHealth(sources = [], warnings = []) {
+      const container = document.getElementById("sourceHealthCards");
+      const summary = document.getElementById("systemHealthSummary");
+      const tag = document.getElementById("systemHealthTag");
+      if (!container || !summary || !tag) return;
+      const activeCount = sources.filter(source => source.status === "active").length;
+      summary.textContent = warnings.length
+        ? warnings.join(" ")
+        : `${activeCount} fonte(s) com dados reais. Monitoramento operacional ativo.`;
+      tag.textContent = warnings.length ? "Atenção" : "Operacional";
+      tag.className = `tag ${warnings.length ? "gold" : "green"}`;
+      container.innerHTML = sources.map(source => {
+        const [label, color] = sourceStatusLabel(source.status);
+        const records = Number(source.records || 0).toLocaleString("pt-BR");
+        const campaigns = Number(source.campaigns || 0).toLocaleString("pt-BR");
+        const lastSync = source.last_sync_at ? new Date(source.last_sync_at).toLocaleString("pt-BR") : "sem sincronização";
+        return `
+          <div class="integration-card">
+            <header>
+              <div>
+                <h3>${safeText(source.name)}</h3>
+                <p>${safeText(source.type)}</p>
+              </div>
+              <span class="tag ${color}">${safeText(label)}</span>
+            </header>
+            <div class="integration-meta">
+              Registros: ${records}<br>
+              Campanhas: ${campaigns}<br>
+              Última sync: ${safeText(lastSync)}
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function applySystemStatus(payload) {
+      const summary = payload.summary || {};
+      document.getElementById("kpiCustomers").textContent = Number(summary.clientes_analisados || 0).toLocaleString("pt-BR");
+      document.getElementById("kpiCampaigns").textContent = Number(summary.campanhas || 0).toLocaleString("pt-BR");
+      const revenueCard = document.querySelectorAll(".kpi strong")[1];
+      const lgpdCard = document.querySelectorAll(".kpi strong")[3];
+      if (revenueCard) revenueCard.textContent = money(summary.receita_atribuida || 0);
+      if (lgpdCard) lgpdCard.textContent = `${Math.round(Number(summary.conformidade_lgpd_percentual || 0))}%`;
+      document.getElementById("kpiSpend").textContent = money(summary.gasto_real || 0);
+      document.getElementById("kpiRoi").textContent = `${Math.round(Number(summary.roi_real_percentual || 0))}%`;
+      document.getElementById("kpiConversions").textContent = Number(summary.conversoes || 0).toLocaleString("pt-BR");
+      document.getElementById("kpiTicket").textContent = money(summary.ticket_medio || 0);
+      renderSourceHealth(payload.sources || [], payload.warnings || []);
+    }
+
+    async function refreshSystemStatus() {
+      try {
+        const response = await fetch(apiUrl("/api/system/status"));
+        if (!response.ok) throw new Error("status_unavailable");
+        applySystemStatus(await response.json());
+      } catch (error) {
+        renderSourceHealth([], ["Status operacional indisponível. Verifique /health e a conexão do banco."]);
+      }
     }
 
     function sourceName(customer) {
@@ -2414,6 +2534,7 @@
         renderActiveCampaignCenter();
         renderCampaignSchedule();
         publishPowerBiSnapshot();
+        refreshSystemStatus();
         return;
       }
 
@@ -2430,6 +2551,7 @@
       renderActiveCampaignCenter();
       renderCampaignSchedule();
       publishPowerBiSnapshot();
+      refreshSystemStatus();
     }
 
     function rowToObject(headers, row) {
@@ -2610,16 +2732,23 @@
     function updateDashboardFromInsights(insights, fileName, messageHtml = "") {
       const projectedRevenue = insights.highIntentCount * insights.avgTicket;
       const campaignCount = Math.max(8, Math.min(99, Math.round(insights.total / 18) + 6));
+      const totalSpend = campaignPerformance.reduce((sum, campaign) => sum + Number(campaign.cost || campaign.spend || 0), 0);
+      const totalRevenue = campaignPerformance.reduce((sum, campaign) => sum + Number(campaign.revenue || 0), projectedRevenue);
+      const totalConversions = campaignPerformance.reduce((sum, campaign) => sum + Number(campaign.conversions || 0), 0);
       document.getElementById("kpiCustomers").textContent = insights.total.toLocaleString("pt-BR");
       document.getElementById("kpiCampaigns").textContent = String(campaignCount);
       const revenueCard = document.querySelectorAll(".kpi strong")[1];
       if (revenueCard) {
-        revenueCard.textContent = projectedRevenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+        revenueCard.textContent = totalRevenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
       }
       const lgpdCard = document.querySelectorAll(".kpi strong")[3];
       if (lgpdCard) {
         lgpdCard.textContent = `${insights.consentRate}%`;
       }
+      document.getElementById("kpiSpend").textContent = money(totalSpend);
+      document.getElementById("kpiRoi").textContent = `${totalSpend ? Math.round(((totalRevenue - totalSpend) / totalSpend) * 100) : 0}%`;
+      document.getElementById("kpiConversions").textContent = totalConversions.toLocaleString("pt-BR");
+      document.getElementById("kpiTicket").textContent = money(insights.avgTicket || 0);
       const cards = document.querySelectorAll(".kpi");
       if (cards[0]) cards[0].querySelector("em").textContent = "base analisada";
       if (cards[1]) cards[1].querySelector("em").textContent = "base ativa";
@@ -3643,6 +3772,7 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
     renderCustomers();
     renderIntegrations();
     generateCampaign();
+    refreshSystemStatus();
     activateTab("dashboard", { keepAiPanel: true });
   </script>
   <script>

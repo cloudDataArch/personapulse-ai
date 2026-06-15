@@ -350,6 +350,11 @@ Criterio de aceite:
 - RQ-003 Remover promessas incompletas.
 - RQ-015 Observabilidade basica.
 
+Status inicial:
+
+- primeira entrega implementa novos KPIs executivos, painel de saude das fontes e endpoint `/api/system/status`;
+- proximas entregas devem aprofundar alertas, loading por painel e estados vazios por modulo.
+
 ### Sprint 2 - Campanhas de verdade
 
 - RQ-004 Pipeline de campanhas.

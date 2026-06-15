@@ -36,6 +36,7 @@ flowchart LR
 - Aplicacao: `<URL_PUBLICA_DA_API>/app`
 - API/docs: `<URL_PUBLICA_DA_API>/docs`
 - Health check: `<URL_PUBLICA_DA_API>/health`
+- Status operacional: `<URL_PUBLICA_DA_API>/api/system/status`
 
 ## Fluxo de dados do MVP
 
@@ -86,6 +87,21 @@ flowchart LR
 - `GET /api/powerbi/campaigns`
 - `GET /api/powerbi/sources`
 - `POST /api/powerbi/snapshot`
+
+### Operacao
+
+- `GET /api/system/status`
+- `GET /api/db/status`
+
+## Sprint 1 - melhorias implantadas
+
+Primeira entrega da Sprint 1:
+
+- dashboard executivo ampliado com gasto de midia, ROI, conversoes e ticket medio real de pedidos;
+- painel de saude das fontes no dashboard;
+- endpoint operacional `/api/system/status`;
+- status de fonte separado por CSV, CRM, Meta Ads, Google Ads, Outros Ads e Power BI;
+- ajustes de texto para reduzir promessa de recurso simulado na experiencia principal.
 
 ## Integracao Power BI
 

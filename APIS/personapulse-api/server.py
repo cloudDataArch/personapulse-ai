@@ -628,6 +628,7 @@ def executive_summary(store):
     if spend > 100000:
         spend = spend / 1000000
     revenue = orders_revenue + media_revenue
+    ticket_medio = round(orders_revenue / len(store["orders"]), 2) if store["orders"] else 0
     conversions = sum(
         int(float(item.get("conversions") or item.get("purchases") or item.get("leads") or 0))
         for item in store["meta_ads_insights"] + store["ads_insights"]
@@ -643,6 +644,7 @@ def executive_summary(store):
         "gasto_real": round(spend, 2),
         "roi_real_percentual": roi,
         "conformidade_lgpd_percentual": round((consent / len(customers)) * 100, 2) if customers else 0,
+        "ticket_medio": ticket_medio,
         "fontes": {
             **summary["fontes"],
             "crm_clientes": len(store["customers"]),
@@ -1408,6 +1410,106 @@ def database_status_payload(store):
             payload["status"] = "partial"
             payload["relational_error"] = str(exc)
     return payload
+
+
+def source_status_entry(key, name, source_type, records, campaigns=0, config=None):
+    config = config or {}
+    has_credentials = bool(
+        config.get("access_token")
+        or config.get("refresh_token")
+        or config.get("client_id")
+        or config.get("account_id")
+    )
+    if records or campaigns:
+        status = "active"
+    elif config.get("status") in {"synced", "configured"} or has_credentials:
+        status = "configured"
+    elif key in {"csv", "crm"}:
+        status = "empty"
+    else:
+        status = "planned"
+    if config.get("status") == "error":
+        status = "error"
+    return {
+        "key": key,
+        "name": name,
+        "type": source_type,
+        "status": status,
+        "records": records,
+        "campaigns": campaigns,
+        "last_sync_at": config.get("last_sync_at") or config.get("updated_at") or "",
+        "has_credentials": has_credentials,
+        "message": config.get("last_error") or "",
+    }
+
+
+def customer_source_count(store, source_keys):
+    source_keys = {key.lower() for key in source_keys}
+    return sum(
+        1 for customer in store.get("customers", [])
+        if str(customer.get("source") or customer.get("origem") or "").lower() in source_keys
+    )
+
+
+def source_statuses(store):
+    configs = store.get("connector_configs", {})
+    csv_count = customer_source_count(store, {"csv"})
+    crm_count = len(store.get("customers", [])) - csv_count
+    return [
+        source_status_entry("csv", "CSV", "file", csv_count),
+        source_status_entry("crm", "CRM", "crm", crm_count, config=configs.get("crm", {})),
+        source_status_entry(
+            "meta",
+            "Meta Ads",
+            "ads",
+            len(store.get("meta_ads_leads", [])),
+            len(store.get("meta_ads_campaigns", [])),
+            configs.get("meta", {}),
+        ),
+        source_status_entry(
+            "google",
+            "Google Ads",
+            "ads",
+            0,
+            len([item for item in store.get("ads_campaigns", []) if item.get("source") == "google"]),
+            configs.get("google", {}),
+        ),
+        source_status_entry(
+            "other_ads",
+            "Outros Ads",
+            "ads",
+            len(store.get("ads_leads", [])),
+            len(store.get("ads_campaigns", [])),
+        ),
+        source_status_entry("powerbi", "Power BI", "bi", 1 if store.get("powerbi_snapshot") else 0),
+    ]
+
+
+def system_status_payload(store):
+    summary = executive_summary(store)
+    sources = source_statuses(store)
+    active_sources = sum(1 for source in sources if source["status"] == "active")
+    warnings = []
+    if not active_sources:
+        warnings.append("Nenhuma fonte com dados reais carregados.")
+    if summary.get("clientes_analisados", 0) == 0:
+        warnings.append("Base de clientes vazia.")
+    if summary.get("campanhas", 0) == 0:
+        warnings.append("Nenhuma campanha carregada.")
+    return {
+        "status": "ok" if not warnings else "attention",
+        "service": "personapulse-api",
+        "time": now_iso(),
+        "database": {
+            "persistence": persistence_status(),
+            "database_url_configured": using_postgres(),
+            "connected": True,
+        },
+        "summary": summary,
+        "sources": sources,
+        "store_counts": store_counts(store),
+        "warnings": warnings,
+    }
 
 
 def normalize_imported_customer(row, index, file_name):
@@ -2369,6 +2471,8 @@ class Handler(BaseHTTPRequestHandler):
                     "detail": str(exc),
                     "time": now_iso(),
                 })
+        if path == "/api/system/status":
+            return self.send_json(200, system_status_payload(store))
         if path == "/api/crm/customers":
             return self.send_json(200, {"customers": store["customers"], "count": len(store["customers"])})
         if path == "/api/crm/orders":

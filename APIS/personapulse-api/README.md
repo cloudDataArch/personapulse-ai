@@ -20,6 +20,8 @@ http://127.0.0.1:8088/docs
 
 - `GET /health`
 - `GET /docs`
+- `GET /api/system/status`
+- `GET /api/db/status`
 
 ### CRM
 
