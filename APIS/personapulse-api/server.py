@@ -1030,9 +1030,10 @@ def upsert_customer_record(customers, customer, index=None):
 def dedupe_customers(customers):
     deduped = []
     alias_map = {}
+    index = {}
     for customer in customers:
         original_external_id = item_text(customer, ["external_id", "lead_id", "id", "email"])
-        status, stored, _ = upsert_customer_record(deduped, dict(customer))
+        status, stored, index = upsert_customer_record(deduped, dict(customer), index)
         if original_external_id and stored.get("external_id"):
             alias_map[original_external_id] = stored["external_id"]
         if status == "updated" and original_external_id and stored.get("external_id"):
