@@ -866,6 +866,7 @@ def load_store_from_postgres():
             store = row["payload"]
     for key, value in empty_store().items():
         store.setdefault(key, value)
+    sync_relational_store_if_stale(store)
     return store
 
 
@@ -1256,47 +1257,6 @@ def sync_relational_store(cur, store):
             ),
         )
 
-    for research in store.get("price_researches", []):
-        suggestions = research.get("priceSuggestions") or []
-        suggestion_by_label = {item.get("label", ""): item for item in suggestions}
-        def suggestion_value(*labels):
-            for label in labels:
-                value = item_float(suggestion_by_label.get(label, {}), ["value"])
-                if value:
-                    return value
-            return 0
-
-        cur.execute(
-            """
-            INSERT INTO app.price_researches (
-                id, product_name, positioning, source, ticket_medio,
-                price_competitive, price_recommended, price_premium,
-                range_low, range_high, observed_items, sources, raw_payload, created_at
-            )
-            VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                COALESCE(%s::timestamptz, NOW())
-            )
-            ON CONFLICT (id) DO NOTHING
-            """,
-            (
-                research.get("id") or str(uuid.uuid4()),
-                item_text(research, ["product", "product_name"], "Produto"),
-                item_text(research, ["position", "positioning"]),
-                item_text(research, ["source"], "Google Shopping"),
-                item_float(research, ["ticketMedio", "ticket_medio"]),
-                suggestion_value("Preco minimo observado", "Preco competitivo"),
-                suggestion_value("Ticket medio sugerido", "Preco recomendado"),
-                suggestion_value("Preco alto observado", "Preco premium"),
-                item_float(research.get("range") or {}, ["low"]),
-                item_float(research.get("range") or {}, ["high"]),
-                item_int(research, ["observedItems", "observed_items"]),
-                Jsonb(research.get("sources") or []),
-                Jsonb(research),
-                item_timestamp(research.get("created_at")),
-            ),
-        )
-
     snapshot = store.get("powerbi_snapshot") or {}
     if snapshot:
         cur.execute(
@@ -1345,7 +1305,6 @@ STORE_COUNT_KEYS = {
     "ads_campaigns": "ads_campaigns",
     "ads_insights": "ads_insights",
     "ads_leads": "ads_leads",
-    "price_researches": "price_researches",
 }
 
 
@@ -1393,6 +1352,90 @@ def relational_counts():
     return counts
 
 
+def expected_relational_counts(store):
+    return {
+        "app.customers": (
+            len(store.get("customers", []))
+            + len(store.get("meta_ads_leads", []))
+            + len(store.get("ads_leads", []))
+        ),
+        "app.orders": len(store.get("orders", [])),
+        "app.events": len(store.get("events", [])),
+        "app.campaigns": (
+            len(store.get("campaigns", []))
+            + len(store.get("meta_ads_campaigns", []))
+            + len(store.get("ads_campaigns", []))
+        ),
+        "app.campaign_metrics": (
+            len(store.get("meta_ads_insights", []))
+            + len(store.get("ads_insights", []))
+        ),
+        "app.recommendations": len(store.get("recommendations", [])),
+        "bi.powerbi_snapshots": 1 if store.get("powerbi_snapshot") else 0,
+    }
+
+
+def relational_sync_mismatches(store, counts=None):
+    counts = counts if counts is not None else relational_counts()
+    mismatches = []
+    for table_name, expected in expected_relational_counts(store).items():
+        observed = counts.get(table_name)
+        if isinstance(observed, dict):
+            mismatches.append({
+                "table": table_name,
+                "expected": expected,
+                "observed": observed,
+                "status": "error",
+            })
+        elif observed != expected:
+            mismatches.append({
+                "table": table_name,
+                "expected": expected,
+                "observed": observed,
+                "status": "mismatch",
+            })
+    return mismatches
+
+
+def sync_relational_from_store(store):
+    if not using_postgres():
+        return {
+            "status": "skipped",
+            "reason": "postgres_not_configured",
+            "relational_counts": {},
+            "mismatches": [],
+        }
+    ensure_postgres_schema()
+    with postgres_connection() as conn:
+        with conn.cursor() as cur:
+            sync_relational_store(cur, store)
+        conn.commit()
+    counts = relational_counts()
+    return {
+        "status": "synced",
+        "relational_counts": counts,
+        "mismatches": relational_sync_mismatches(store, counts),
+        "time": now_iso(),
+    }
+
+
+def sync_relational_store_if_stale(store):
+    if not using_postgres():
+        return
+    try:
+        counts = relational_counts()
+        expected = expected_relational_counts(store)
+        must_resync = any(
+            expected.get(table_name, 0) > 0 and counts.get(table_name) == 0
+            for table_name in ("app.customers", "app.orders", "app.events", "app.campaigns")
+        )
+        if must_resync:
+            sync_relational_from_store(store)
+    except Exception:
+        # O endpoint /api/db/status mostra o erro completo; o load nao deve esconder o app.
+        pass
+
+
 def database_status_payload(store):
     payload = {
         "status": "ok",
@@ -1406,6 +1449,10 @@ def database_status_payload(store):
     if using_postgres():
         try:
             payload["relational_counts"] = relational_counts()
+            payload["expected_relational_counts"] = expected_relational_counts(store)
+            payload["relational_mismatches"] = relational_sync_mismatches(store, payload["relational_counts"])
+            if payload["relational_mismatches"]:
+                payload["status"] = "needs_resync"
         except Exception as exc:
             payload["status"] = "partial"
             payload["relational_error"] = str(exc)
@@ -2115,6 +2162,7 @@ DOCS_HTML = """
 
   <section><span class="method">GET</span> <code>/health</code><p>Status da API.</p></section>
   <section><span class="method">GET</span> <code>/api/db/status</code><p>Diagnostico do PostgreSQL: contagens do store consolidado e das tabelas relacionais.</p></section>
+  <section><span class="method">POST</span> <code>/api/db/resync-relational</code><p>Recria as tabelas relacionais a partir do app_store consolidado.</p></section>
   <section><span class="method">POST</span> <code>/api/crm/customers</code><p>Cria ou atualiza cliente vindo do CRM.</p>
 <pre>{
   "external_id": "crm_123",
@@ -2658,9 +2706,12 @@ class Handler(BaseHTTPRequestHandler):
                 save_store(store)
                 return self.send_json(200, {"status": "imported", **result, "store_counts": store_counts(store)})
 
-            if path == "/api/db/rebuild-relational":
-                save_store(store)
-                return self.send_json(200, {**database_status_payload(store), "rebuild_status": "rebuilt"})
+            if path in {"/api/db/resync-relational", "/api/db/rebuild-relational"}:
+                result = sync_relational_from_store(store)
+                return self.send_json(200, {
+                    **database_status_payload(store),
+                    "resync": result,
+                })
 
             if path == "/api/campaigns/generate":
                 campaign = generate_campaign(payload)

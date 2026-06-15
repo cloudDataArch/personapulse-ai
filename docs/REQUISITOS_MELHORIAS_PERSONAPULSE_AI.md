@@ -334,6 +334,8 @@ Requisitos:
 
 - endpoint `/health` com banco e versao;
 - endpoint `/api/system/status` com fontes, banco e ultima sync;
+- endpoint `/api/db/status` com divergencias entre `app_store` e tabelas relacionais;
+- endpoint `/api/db/resync-relational` para reconstruir tabelas `app.*` e views `dba.*` a partir do store consolidado;
 - logs de erro sem expor secrets;
 - auditoria de importacoes e sincronizacoes.
 
@@ -353,6 +355,7 @@ Criterio de aceite:
 Status inicial:
 
 - primeira entrega implementa novos KPIs executivos, painel de saude das fontes e endpoint `/api/system/status`;
+- correcao operacional adiciona ressincronizacao do banco relacional a partir do `app_store`;
 - proximas entregas devem aprofundar alertas, loading por painel e estados vazios por modulo.
 
 ### Sprint 2 - Campanhas de verdade

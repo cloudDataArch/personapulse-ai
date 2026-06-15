@@ -22,6 +22,7 @@ http://127.0.0.1:8088/docs
 - `GET /docs`
 - `GET /api/system/status`
 - `GET /api/db/status`
+- `POST /api/db/resync-relational`
 
 ### CRM
 
@@ -99,6 +100,8 @@ Esta versao usa PostgreSQL como persistencia oficial.
 
 - Configure `DATABASE_URL` em producao.
 - Sem `DATABASE_URL`, a API retorna erro de configuracao e nao grava dados.
+- O `app_store` e a fonte consolidada. As tabelas relacionais `app.*`, `dba.*`, `bi.*`, `integrations.*` e `audit.*` podem ser reconstruidas com `POST /api/db/resync-relational`.
+- O endpoint `GET /api/db/status` mostra contagens esperadas, contagens relacionais e divergencias de sincronizacao.
 
 Na VPS atual, o servico systemd usa `/opt/personapulse/start.sh`, que deve apontar para:
 

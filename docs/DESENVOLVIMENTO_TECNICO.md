@@ -92,6 +92,7 @@ flowchart LR
 
 - `GET /api/system/status`
 - `GET /api/db/status`
+- `POST /api/db/resync-relational`
 
 ## Sprint 1 - melhorias implantadas
 
@@ -101,6 +102,7 @@ Primeira entrega da Sprint 1:
 - painel de saude das fontes no dashboard;
 - endpoint operacional `/api/system/status`;
 - status de fonte separado por CSV, CRM, Meta Ads, Google Ads, Outros Ads e Power BI;
+- ressincronizacao operacional do modelo relacional a partir do `app_store`;
 - ajustes de texto para reduzir promessa de recurso simulado na experiencia principal.
 
 ## Integracao Power BI
@@ -132,6 +134,17 @@ Hoje a API usa PostgreSQL como persistencia oficial:
 
 - usa PostgreSQL quando a variavel `DATABASE_URL` esta configurada;
 - sem `DATABASE_URL`, a API retorna erro de configuracao e nao grava dados;
+- grava o estado consolidado em `app_store`;
+- materializa as tabelas relacionais com `sync_relational_store`;
+- corrige automaticamente tabelas principais vazias quando encontra `app_store` populado;
+- permite reparo manual com `POST /api/db/resync-relational`.
+
+Comando de reparo operacional:
+
+```bash
+curl -X POST http://127.0.0.1:8088/api/db/resync-relational
+curl -s http://127.0.0.1:8088/api/db/status | python3 -m json.tool
+```
 
 Schemas SQL:
 
