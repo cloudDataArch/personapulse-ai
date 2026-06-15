@@ -336,6 +336,7 @@ Requisitos:
 - endpoint `/api/system/status` com fontes, banco e ultima sync;
 - endpoint `/api/db/status` com divergencias entre `app_store` e tabelas relacionais;
 - endpoint `/api/db/resync-relational` para reconstruir tabelas `app.*` e views `dba.*` a partir do store consolidado;
+- deduplicacao de clientes por ID de origem, e-mail e telefone para gravar apenas dados novos;
 - logs de erro sem expor secrets;
 - auditoria de importacoes e sincronizacoes.
 
@@ -356,6 +357,7 @@ Status inicial:
 
 - primeira entrega implementa novos KPIs executivos, painel de saude das fontes e endpoint `/api/system/status`;
 - correcao operacional adiciona ressincronizacao do banco relacional a partir do `app_store`;
+- importacao e upsert de clientes passam a atualizar registros existentes em vez de duplicar contatos;
 - proximas entregas devem aprofundar alertas, loading por painel e estados vazios por modulo.
 
 ### Sprint 2 - Campanhas de verdade

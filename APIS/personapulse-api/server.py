@@ -871,6 +871,7 @@ def load_store_from_postgres():
 
 
 def save_store_to_postgres(store):
+    normalize_store_customers(store)
     ensure_postgres_schema()
     with postgres_connection() as conn:
         with conn.cursor() as cur:
@@ -943,7 +944,144 @@ def item_timestamp(value):
     return str(value)
 
 
+def normalize_email(value):
+    return str(value or "").strip().lower()
+
+
+def normalize_phone(value):
+    digits = re.sub(r"\D+", "", str(value or ""))
+    if len(digits) > 11 and digits.startswith("55"):
+        digits = digits[2:]
+    return digits
+
+
+def customer_identity_keys(customer):
+    keys = []
+    source = item_source(customer, "").lower()
+    external_id = item_text(customer, ["external_id", "lead_id", "id", "email"])
+    if source and external_id:
+        keys.append(("source_external_id", f"{source}:{external_id}"))
+    email = normalize_email(customer.get("email"))
+    if email:
+        keys.append(("email", email))
+    for phone_key in ("phone", "telefone", "whatsapp", "celular"):
+        phone = normalize_phone(customer.get(phone_key))
+        if len(phone) >= 8:
+            keys.append(("phone", phone))
+    return keys
+
+
+def customer_identity_index(customers):
+    index = {}
+    for customer in customers:
+        for key in customer_identity_keys(customer):
+            index.setdefault(key, customer)
+    return index
+
+
+def find_existing_customer(customers, customer, index=None):
+    index = index if index is not None else customer_identity_index(customers)
+    for key in customer_identity_keys(customer):
+        existing = index.get(key)
+        if existing is not None:
+            return existing
+    return None
+
+
+def merge_customer(existing, incoming):
+    existing_sources = set(existing.get("merged_sources") or [])
+    existing_sources.add(item_source(existing, "manual"))
+    existing_sources.add(item_source(incoming, "manual"))
+    created_at = existing.get("created_at") or incoming.get("created_at") or now_iso()
+    external_id = existing.get("external_id") or incoming.get("external_id")
+    source = existing.get("source") or incoming.get("source") or "manual"
+    for key, value in incoming.items():
+        if key == "created_at":
+            continue
+        if value not in (None, "", []):
+            existing[key] = value
+    existing["external_id"] = external_id
+    existing["source"] = source
+    existing["created_at"] = created_at
+    existing["updated_at"] = now_iso()
+    existing["merged_sources"] = sorted(source for source in existing_sources if source)
+    return existing
+
+
+def upsert_customer_record(customers, customer, index=None):
+    index = index if index is not None else customer_identity_index(customers)
+    existing = find_existing_customer(customers, customer, index)
+    if existing:
+        stored = merge_customer(existing, customer)
+        for key in customer_identity_keys(stored):
+            index[key] = stored
+        for key in customer_identity_keys(customer):
+            index[key] = stored
+        return "updated", stored, index
+    customer["external_id"] = item_text(customer, ["external_id"], str(uuid.uuid4()))
+    customer["created_at"] = customer.get("created_at") or now_iso()
+    customer["updated_at"] = now_iso()
+    customers.append(customer)
+    for key in customer_identity_keys(customer):
+        index[key] = customer
+    return "created", customer, index
+
+
+def dedupe_customers(customers):
+    deduped = []
+    alias_map = {}
+    for customer in customers:
+        original_external_id = item_text(customer, ["external_id", "lead_id", "id", "email"])
+        status, stored, _ = upsert_customer_record(deduped, dict(customer))
+        if original_external_id and stored.get("external_id"):
+            alias_map[original_external_id] = stored["external_id"]
+        if status == "updated" and original_external_id and stored.get("external_id"):
+            alias_map[original_external_id] = stored["external_id"]
+    return deduped, alias_map
+
+
+def remap_customer_references(items, alias_map):
+    for item in items:
+        external_customer_id = item.get("external_customer_id") or item.get("customer_external_id") or item.get("cliente_id")
+        if external_customer_id in alias_map:
+            item["external_customer_id"] = alias_map[external_customer_id]
+
+
+def dedupe_items_by_key(items, keys):
+    deduped = []
+    seen = {}
+    for item in items:
+        item_key = None
+        for key in keys:
+            value = item.get(key)
+            if value not in (None, ""):
+                item_key = str(value)
+                break
+        if not item_key:
+            deduped.append(item)
+            continue
+        existing = seen.get(item_key)
+        if existing:
+            existing.update({key: value for key, value in item.items() if value not in (None, "", [])})
+            existing["updated_at"] = now_iso()
+        else:
+            seen[item_key] = item
+            deduped.append(item)
+    return deduped
+
+
+def normalize_store_customers(store):
+    deduped, alias_map = dedupe_customers(store.get("customers", []))
+    store["customers"] = deduped
+    remap_customer_references(store.get("orders", []), alias_map)
+    remap_customer_references(store.get("events", []), alias_map)
+    store["orders"] = dedupe_items_by_key(store.get("orders", []), ["order_id", "external_order_id", "id"])
+    store["events"] = dedupe_items_by_key(store.get("events", []), ["event_id", "external_event_id", "id"])
+    return alias_map
+
+
 def sync_relational_store(cur, store):
+    normalize_store_customers(store)
     cur.execute("""
         TRUNCATE
             app.campaign_metrics,
@@ -1406,8 +1544,18 @@ def sync_relational_from_store(store):
             "mismatches": [],
         }
     ensure_postgres_schema()
+    normalize_store_customers(store)
     with postgres_connection() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO app_store (key, payload, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (key)
+                DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
+                """,
+                (STORE_KEY, Jsonb(store)),
+            )
             sync_relational_store(cur, store)
         conn.commit()
     counts = relational_counts()
@@ -1632,28 +1780,44 @@ def import_csv_customers(store, rows, file_name="arquivo.csv", replace_source=Tr
         store["customers"] = [item for item in store.get("customers", []) if item_source(item, "").lower() != "csv"]
         store["orders"] = [item for item in store.get("orders", []) if item_source(item, "").lower() != "csv"]
         store["events"] = [item for item in store.get("events", []) if item_source(item, "").lower() != "csv"]
-    customers = []
+    created_customers = 0
+    updated_customers = 0
     orders = []
     events = []
+    customer_index = customer_identity_index(store.get("customers", []))
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
             continue
         customer, order, customer_events = normalize_imported_customer(row, index, file_name)
-        customers.append(customer)
+        status, stored_customer, customer_index = upsert_customer_record(store["customers"], customer, customer_index)
+        if status == "created":
+            created_customers += 1
+        else:
+            updated_customers += 1
+        if order:
+            order["external_customer_id"] = stored_customer["external_id"]
+        for event in customer_events:
+            event["external_customer_id"] = stored_customer["external_id"]
         if order:
             orders.append(order)
         events.extend(customer_events)
-    store["customers"].extend(customers)
     store["orders"].extend(orders)
     store["events"].extend(events)
+    normalize_store_customers(store)
     add_audit(store, "csv_customers_imported", {
         "file_name": file_name,
-        "customers": len(customers),
+        "customers": created_customers,
+        "customers_updated": updated_customers,
         "orders": len(orders),
         "events": len(events),
         "replace_source": replace_source,
     })
-    return {"customers": len(customers), "orders": len(orders), "events": len(events)}
+    return {
+        "customers": created_customers,
+        "customers_updated": updated_customers,
+        "orders": len(orders),
+        "events": len(events),
+    }
 
 
 def load_store():
@@ -2628,21 +2792,15 @@ class Handler(BaseHTTPRequestHandler):
             store = load_store()
             payload = read_json(self)
             if path == "/api/crm/customers":
-                external_id = payload.get("external_id") or str(uuid.uuid4())
+                external_id = payload.get("external_id") or payload.get("email") or str(uuid.uuid4())
                 payload["external_id"] = external_id
+                payload["source"] = payload.get("source") or "crm"
                 payload["consent_marketing"] = as_bool(payload.get("consent_marketing"))
                 payload["updated_at"] = now_iso()
-                existing = next((c for c in store["customers"] if c.get("external_id") == external_id), None)
-                if existing:
-                    existing.update(payload)
-                    status = "updated"
-                else:
-                    payload["created_at"] = now_iso()
-                    store["customers"].append(payload)
-                    status = "created"
+                status, customer, _ = upsert_customer_record(store["customers"], payload)
                 add_audit(store, "crm_customer_upsert", {"external_id": external_id, "status": status})
                 save_store(store)
-                return self.send_json(200, {"status": status, "customer": payload})
+                return self.send_json(200, {"status": status, "customer": customer})
 
             if path == "/api/crm/orders":
                 payload["id"] = payload.get("id") or str(uuid.uuid4())

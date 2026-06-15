@@ -137,7 +137,8 @@ Hoje a API usa PostgreSQL como persistencia oficial:
 - grava o estado consolidado em `app_store`;
 - materializa as tabelas relacionais com `sync_relational_store`;
 - corrige automaticamente tabelas principais vazias quando encontra `app_store` populado;
-- permite reparo manual com `POST /api/db/resync-relational`.
+- permite reparo manual com `POST /api/db/resync-relational`;
+- deduplica clientes por `source + external_id`, e-mail normalizado e telefone/WhatsApp normalizado antes de salvar e antes de reconstruir o relacional.
 
 Comando de reparo operacional:
 

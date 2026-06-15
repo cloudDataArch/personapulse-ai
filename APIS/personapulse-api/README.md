@@ -33,6 +33,8 @@ http://127.0.0.1:8088/docs
 - `POST /api/crm/events`
 - `GET /api/crm/events`
 
+Clientes sao gravados com deduplicacao por `source + external_id`, e-mail normalizado e telefone/WhatsApp normalizado. Se o mesmo cliente chegar de novo, a API atualiza o cadastro existente e insere apenas dados novos.
+
 ### Segmentos, campanhas e recomendacoes
 
 - `GET /api/segments`
@@ -102,6 +104,7 @@ Esta versao usa PostgreSQL como persistencia oficial.
 - Sem `DATABASE_URL`, a API retorna erro de configuracao e nao grava dados.
 - O `app_store` e a fonte consolidada. As tabelas relacionais `app.*`, `dba.*`, `bi.*`, `integrations.*` e `audit.*` podem ser reconstruidas com `POST /api/db/resync-relational`.
 - O endpoint `GET /api/db/status` mostra contagens esperadas, contagens relacionais e divergencias de sincronizacao.
+- A sincronizacao relacional tambem remove clientes duplicados do store antes de materializar as tabelas.
 
 Na VPS atual, o servico systemd usa `/opt/personapulse/start.sh`, que deve apontar para:
 
