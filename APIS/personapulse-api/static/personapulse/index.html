@@ -1034,10 +1034,6 @@
           <span class="ico"><svg viewBox="0 0 24 24"><path d="M3 11l18-5v12L3 13v-2z"/><path d="M7 14v4a2 2 0 0 0 2 2h2"/><path d="M17 9a4 4 0 0 1 0 6"/></svg></span>
           <span>Ativas</span>
         </button>
-        <button data-tab="pricing" title="Pesquisa de preços">
-          <span class="ico"><svg viewBox="0 0 24 24"><path d="M20 7H4"/><path d="M14 17H4"/><path d="M18 11H4"/><path d="M10 21H4"/><path d="M18 3l3 3-7 7-4 1 1-4 7-7z"/></svg></span>
-          <span>Preços</span>
-        </button>
         <button data-tab="integrations" title="Integrações">
           <span class="ico"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.2 1.2"/><path d="M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.2-1.2"/></svg></span>
           <span>Integrações</span>
@@ -1053,7 +1049,7 @@
       </nav>
 
       <div class="sidebar-note">
-        Dados conectados, campanhas, preços e indicadores em um só painel.
+        Dados conectados, campanhas e indicadores em um só painel.
       </div>
     </aside>
 
@@ -1473,52 +1469,6 @@
         </article>
       </section>
 
-      <section id="pricing" class="section">
-        <div class="grid two">
-          <article class="panel">
-            <div class="panel-header">
-              <div>
-                <h2>Pesquisa de preços e produto</h2>
-                <span>Espaço reservado para referências de mercado e posicionamento</span>
-              </div>
-              <span class="tag gold">Planejado</span>
-            </div>
-            <div class="panel-body">
-              <div class="form-grid">
-                <label>Produto pesquisado
-                  <input id="pricingProduct" value="Bicicleta MTB" />
-                </label>
-                <label>Posicionamento
-                  <select id="pricingPosition">
-                    <option>Premium</option>
-                    <option>Intermediário</option>
-                    <option>Básico</option>
-                    <option>Alto custo</option>
-                  </select>
-                </label>
-              </div>
-              <div style="height:12px"></div>
-              <button class="btn primary" id="generatePricing">
-                <span class="ico"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 16l3-4 3 2 5-7"/></svg></span>
-                Pesquisar Google
-              </button>
-            </div>
-          </article>
-
-          <article class="panel">
-            <div class="panel-header">
-              <div>
-                <h2>Resumo de mercado</h2>
-                <span>Informação de apoio, separada da copy publicitária</span>
-              </div>
-            </div>
-            <div class="panel-body">
-              <div id="pricingOutput" class="campaign-output"></div>
-            </div>
-          </article>
-        </div>
-      </section>
-
       <section id="integrations" class="section">
         <article class="panel">
           <div class="panel-header">
@@ -1674,7 +1624,6 @@
       customers: ["Clientes analisados", "Visualize registros vindos das fontes conectadas e confira os dados usados na segmentacao."],
       segments: ["Segmentos de clientes", "Perfis comportamentais criados com dados proprios e consentidos."],
       campaigns: ["Gerador de campanhas", "Crie mensagens para WhatsApp, e-mail, Ads e SEO com apoio da IA."],
-      pricing: ["Pesquisa de preços", "Analise referências de mercado, posicionamento e faixa de preço por produto."],
       integrations: ["Central de integrações", "Conecte APIs oficiais de Ads, CRM e marketplaces sem poluir o dashboard."],
       activeCampaigns: ["Campanhas ativas", "Ative, pause e acompanhe resultados individuais das campanhas."],
       recommendations: ["Recomendacoes da IA", "Fila de decisoes sugeridas para melhorar conversao e recompra."],
@@ -3380,110 +3329,6 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
       return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
     }
 
-    function localPricingUnavailable(product, position) {
-      return {
-        product,
-        position,
-        source: "Mercado Livre + Amazon + Shopee. Dados insuficientes para calcular ticket medio confiavel.",
-        sourceStatus: [
-          { name: "Mercado Livre API", status: "best_effort_public", needsCredentials: true },
-          { name: "Amazon busca publica", status: "best_effort", needsCredentials: false },
-          { name: "Shopee busca publica", status: "best_effort", needsCredentials: false },
-        ],
-        ticketMedio: 0,
-        priceSuggestions: [
-          { label: "Basico", value: 0, reason: "Aguardando pelo menos 3 precos reais nos marketplaces permitidos." },
-          { label: "Intermediario", value: 0, reason: "Sem calculo local para evitar preco falso." },
-          { label: "Premium", value: 0, reason: "Aguardando referencias reais de mercado." },
-          { label: "Alto custo", value: 0, reason: "Aguardando referencias do topo de mercado." },
-        ],
-        range: { low: 0, high: 0 },
-        priceBuckets: {
-          basico: { low: 0, avg: 0, high: 0, items: 0 },
-          intermediario: { low: 0, avg: 0, high: 0, items: 0 },
-          premium: { low: 0, avg: 0, high: 0, items: 0 },
-          alto_custo: { low: 0, avg: 0, high: 0, items: 0 },
-        },
-        attrs: [
-          "sem estimativa inventada",
-          "aguardando marketplaces permitidos",
-          "fontes limitadas a Mercado Livre, Amazon e Shopee",
-          "use produto, marca, modelo e aro para melhorar a busca",
-        ],
-        sources: [],
-        observedItems: 0,
-      };
-    }
-
-    function renderPricingResearch(data) {
-      const hasReliableTicket = Number(data.ticketMedio || 0) > 0 && Number(data.observedItems || 0) >= 3;
-      const suggestions = data.priceSuggestions.map(item => {
-        const value = Number(item.value || 0) > 0 ? formatBRL(item.value) : "sem preco suficiente";
-        return `- ${item.label}: ${value} | ${item.reason}`;
-      }).join("\n");
-      const sources = data.sources && data.sources.length
-        ? data.sources.slice(0, 8).map((source, index) => `${index + 1}. ${source.title}${source.price ? ` | ${formatBRL(source.price)}` : ""}\n   ${source.url}`).join("\n")
-        : "Nenhuma fonte estruturada retornou referencia nesta execucao.";
-      const sourceStatus = (data.sourceStatus || [])
-        .map(source => `- ${source.name}: ${source.status === "active" ? "ativo" : "aguardando credenciais/acesso"}`)
-        .join("\n");
-      const attrs = (data.attrs || []).map(attr => `- ${attr}`).join("\n");
-      document.getElementById("pricingOutput").textContent = `Produto pesquisado: ${data.product}
-Posicionamento: ${data.position}
-Origem da analise: ${data.source}
-Referencias reais usadas no calculo: ${data.observedItems || 0}
-
-Ticket medio calculado para o posicionamento:
-${hasReliableTicket ? formatBRL(data.ticketMedio) : "Dados insuficientes para calcular ticket medio confiavel"}
-
-Faixa observada:
-${hasReliableTicket ? `${formatBRL(data.range.low)} a ${formatBRL(data.range.high)}` : "Aguardando pelo menos 3 precos reais estruturados"}
-
-Faixas de preco:
-${suggestions}
-
-Atributos que justificam o preco:
-${attrs}
-
-Fontes e referencias:
-${sources}
-
-Status da fonte de preços:
-${sourceStatus || "- Marketplaces permitidos: aguardando retorno"}
-
-Como usar na campanha:
-Use estes valores para orientar posicionamento e oferta. A copy final deve vender desejo, beneficio e diferenciacao, nao mostrar dados tecnicos internos.`;
-    }
-
-    async function generatePricingResearch() {
-      const product = document.getElementById("pricingProduct").value || "Produto";
-      const position = document.getElementById("pricingPosition").value;
-      document.getElementById("pricingOutput").textContent = `Pesquisando referencias para "${product}"...`;
-      try {
-        const path = `/api/price-research?product=${encodeURIComponent(product)}&position=${encodeURIComponent(position)}`;
-        const response = await fetch(path);
-        if (!response.ok) throw new Error("API indisponivel");
-        renderPricingResearch(await response.json());
-      } catch (error) {
-        renderPricingResearch({
-          product,
-          position,
-          source: "Google Shopping",
-          ticketMedio: 0,
-          priceSuggestions: [
-            { label: "Preco minimo observado", value: 0, reason: "A API nao retornou dados reais suficientes." },
-            { label: "Ticket medio sugerido", value: 0, reason: "Refaca a pesquisa ou ajuste o nome do produto." },
-            { label: "Preco alto observado", value: 0, reason: "Nao vamos estimar valor sem fonte confiavel." },
-          ],
-          range: { low: 0, high: 0 },
-          attrs: [],
-          sources: [],
-          observedItems: 0,
-          sourceStatus: [{ name: "Google Shopping", status: "aguardando dados reais" }],
-        });
-      }
-    }
-
     function activeTabName() {
       const active = document.querySelector(".section.active");
       return active ? active.id : "dashboard";
@@ -3605,7 +3450,6 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
       }
       generateCampaign();
     });
-    document.getElementById("generatePricing").addEventListener("click", generatePricingResearch);
     document.getElementById("exportData").addEventListener("click", (event) => {
       event.stopPropagation();
       document.getElementById("exportMenu").classList.toggle("open");
@@ -3799,7 +3643,6 @@ Use estes valores para orientar posicionamento e oferta. A copy final deve vende
     renderCustomers();
     renderIntegrations();
     generateCampaign();
-    generatePricingResearch();
     activateTab("dashboard", { keepAiPanel: true });
   </script>
   <script>

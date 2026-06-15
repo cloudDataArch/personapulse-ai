@@ -61,7 +61,6 @@ flowchart LR
 - `GET /api/segments`
 - `GET /api/campaigns`
 - `POST /api/campaigns/generate`
-- `GET /api/price-research?product={produto}&position={entrada|intermediario|premium|alto_custo}`
 - `GET /api/recommendations`
 - `POST /api/crm/recommendations/push`
 
@@ -105,33 +104,11 @@ Quando o Power BI mostrar campos do tipo `List` ou `Record`, expandir a lista co
 
 O endpoint `executive-summary` deve manter schema estavel, mesmo sem dados, para evitar quebra de colunas no Power BI.
 
-## Pesquisa de precos e ticket medio
+## Precificador removido
 
-A pesquisa de precos deve usar apenas marketplaces permitidos:
+O precificador foi removido da experiencia do PersonaPulse AI. As fontes publicas de marketplace bloquearam a consulta automatica na VPS, e o produto nao deve exibir ticket medio vazio ou inventado.
 
-- Mercado Livre
-- Amazon Brasil
-- Shopee Brasil
-
-Fontes removidas/bloqueadas para esse fluxo:
-
-- Buscape
-- DataForSEO
-- Google Custom Search JSON API
-
-O backend nao deve inventar ticket medio. Se menos de 3 precos reais confiaveis forem encontrados, o endpoint retorna `ticketMedio: 0`, `observedItems: 0` ou a quantidade real observada, e descreve os erros por fonte.
-
-Para produtos de entrada, o filtro deve evitar que ofertas premium contaminem o ticket basico. Exemplo: uma busca por bicicleta Caloi aro 29 adulta basica nao deve usar modelos `Elite Carbon`, `SLX`, `RockShox`, `full suspension` ou similares para sugerir ticket medio.
-
-O status esperado quando marketplaces bloqueiam consulta automatica e:
-
-```text
-Mercado Livre API: best_effort_public ou active com token oficial
-Amazon busca publica: best_effort
-Shopee busca publica: best_effort
-```
-
-Quando houver credencial oficial do Mercado Livre, configurar `MERCADO_LIVRE_ACCESS_TOKEN` no ambiente do backend.
+O endpoint legado `/api/price-research` retorna `410 Gone` com `price_research_removed`. Buscape, DataForSEO e Google Custom Search JSON API continuam fora do produto.
 
 ## Persistencia atual
 

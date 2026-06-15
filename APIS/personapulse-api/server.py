@@ -2327,6 +2327,13 @@ class Handler(BaseHTTPRequestHandler):
                     payload["detail"] = str(exc)
                     status_code = 503
             return self.send_json(status_code, payload)
+        if path == "/api/price-research":
+            return self.send_json(410, {
+                "error": "price_research_removed",
+                "service": "personapulse-api",
+                "message": "O precificador foi removido do PersonaPulse AI.",
+                "time": now_iso(),
+            })
         try:
             store = load_store()
         except Exception as exc:
@@ -2338,21 +2345,6 @@ class Handler(BaseHTTPRequestHandler):
                 "detail": str(exc),
                 "time": now_iso(),
             })
-        if path == "/api/price-research":
-            product = (query.get("product") or ["Produto"])[0]
-            position = (query.get("position") or ["Intermediário"])[0]
-            result = pricing_reference(product, position)
-            store.setdefault("price_researches", [])
-            store["price_researches"].insert(0, result)
-            store["price_researches"] = store["price_researches"][:100]
-            add_audit(store, "price_research_created", {
-                "product": product,
-                "position": position,
-                "source": result.get("source"),
-                "observed_items": result.get("observedItems", 0),
-            })
-            save_store(store)
-            return self.send_json(200, result)
         if path == "/api/powerbi/executive-summary":
             return self.send_json(200, executive_summary(store))
         if path == "/api/powerbi/customers":

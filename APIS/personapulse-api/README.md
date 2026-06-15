@@ -35,32 +35,20 @@ http://127.0.0.1:8088/docs
 - `GET /api/segments`
 - `GET /api/campaigns`
 - `POST /api/campaigns/generate`
-- `GET /api/price-research?product={produto}&position={entrada|intermediario|premium|alto_custo}`
 - `GET /api/recommendations`
 - `POST /api/crm/recommendations/push`
 
-### Pesquisa de precos
+### Precificador removido
 
-O endpoint de pesquisa de precos usa somente fontes permitidas:
+O precificador foi removido do PersonaPulse AI porque as fontes publicas bloqueavam consulta automatica e o produto nao deve exibir ticket medio vazio ou inventado.
 
-- Mercado Livre
-- Amazon Brasil
-- Shopee Brasil
+O endpoint legado:
 
-Nao usar Buscape, DataForSEO ou Google Custom Search JSON API para calcular ticket medio.
-
-Regras atuais:
-
-- o ticket medio so e calculado quando houver pelo menos 3 precos reais confiaveis;
-- itens incompativeis com o produto sao descartados;
-- para posicionamento `entrada`, termos de alto custo como `carbon`, `elite`, `slx`, `rockshox`, `full suspension` e similares sao filtrados;
-- quando as fontes bloqueiam consulta automatica, a API retorna `ticketMedio: 0` e lista o erro da fonte, sem inventar preco.
-
-Em producao, o Mercado Livre pode exigir acesso server-to-server. Quando houver token oficial, configure:
-
-```text
-MERCADO_LIVRE_ACCESS_TOKEN=<token>
+```http
+GET /api/price-research
 ```
+
+retorna `410 Gone` com `price_research_removed`.
 
 ### Meta Ads
 

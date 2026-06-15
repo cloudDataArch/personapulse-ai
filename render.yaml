@@ -11,5 +11,3 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
-      - key: MERCADO_LIVRE_ACCESS_TOKEN
-        sync: false
