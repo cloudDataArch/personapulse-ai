@@ -3384,18 +3384,17 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
       return {
         product,
         position,
-        source: "Google Custom Search API. Configure a API para precos reais estruturados.",
+        source: "Mercado Livre + Amazon + Shopee. Dados insuficientes para calcular ticket medio confiavel.",
         sourceStatus: [
-          { name: "Google Custom Search API", status: "needs_credentials", needsCredentials: true },
-          { name: "Mercado Livre via Google", status: "waiting_google_cse", needsCredentials: true },
-          { name: "Amazon via Google", status: "waiting_google_cse", needsCredentials: true },
-          { name: "Shopee via Google", status: "waiting_google_cse", needsCredentials: true },
+          { name: "Mercado Livre API", status: "best_effort_public", needsCredentials: true },
+          { name: "Amazon busca publica", status: "best_effort", needsCredentials: false },
+          { name: "Shopee busca publica", status: "best_effort", needsCredentials: false },
         ],
         ticketMedio: 0,
         priceSuggestions: [
-          { label: "Basico", value: 0, reason: "Aguardando fonte real do Google." },
+          { label: "Basico", value: 0, reason: "Aguardando pelo menos 3 precos reais nos marketplaces permitidos." },
           { label: "Intermediario", value: 0, reason: "Sem calculo local para evitar preco falso." },
-          { label: "Premium", value: 0, reason: "Aguardando fonte real do Google." },
+          { label: "Premium", value: 0, reason: "Aguardando referencias reais de mercado." },
           { label: "Alto custo", value: 0, reason: "Aguardando referencias do topo de mercado." },
         ],
         range: { low: 0, high: 0 },
@@ -3407,7 +3406,7 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
         },
         attrs: [
           "sem estimativa inventada",
-          "aguardando fonte real do Google",
+          "aguardando marketplaces permitidos",
           "fontes limitadas a Mercado Livre, Amazon e Shopee",
           "use produto, marca, modelo e aro para melhorar a busca",
         ],
@@ -3450,7 +3449,7 @@ Fontes e referencias:
 ${sources}
 
 Status da fonte de preços:
-${sourceStatus || "- Google Custom Search API: aguardando credenciais"}
+${sourceStatus || "- Marketplaces permitidos: aguardando retorno"}
 
 Como usar na campanha:
 Use estes valores para orientar posicionamento e oferta. A copy final deve vender desejo, beneficio e diferenciacao, nao mostrar dados tecnicos internos.`;

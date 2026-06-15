@@ -236,7 +236,7 @@ def build_seed(customers: list[dict], orders: list[dict], events: list[dict], ca
         "    ('meta_ads', 'Meta Ads', 'ads', 'planned'),",
         "    ('google_ads', 'Google Ads', 'ads', 'planned'),",
         "    ('powerbi', 'Power BI', 'bi', 'active'),",
-        "    ('google_cse', 'Google Custom Search API', 'price_research', 'active')",
+        "    ('marketplace_prices', 'Mercado Livre + Amazon + Shopee', 'price_research', 'active')",
         "ON CONFLICT (source_key) DO UPDATE SET",
         "    source_name = EXCLUDED.source_name,",
         "    source_type = EXCLUDED.source_type,",

@@ -195,7 +195,7 @@ def build_doc():
             ("Backend API", "Python HTTP service", "Receives CRM data, handles OAuth callbacks, synchronizes Ads data, calculates indicators and exposes Power BI endpoints."),
             ("Persistence", "PostgreSQL", "Stores customers, orders, events, campaigns, campaign metrics, recommendations, connector configurations, audit records and price research results."),
             ("External API", "Google Ads API", "Retrieves authorized campaign and metric data using OAuth and developer token access."),
-            ("External API", "Google Custom Search API", "Retrieves market price references for product research where configured."),
+            ("External API", "Mercado Livre + Amazon + Shopee", "Retrieves market price references from permitted marketplaces where available."),
             ("Reporting", "Power BI endpoints", "Provides JSON endpoints for executive summary, customers, campaigns and data sources."),
         ],
     )

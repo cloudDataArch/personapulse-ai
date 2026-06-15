@@ -29,19 +29,17 @@ API_VERSION = "v20.0"
 ASSETS_DIR = BASE_DIR / "assets"
 APP_DIR = BASE_DIR / "static" / "personapulse"
 STORE_KEY = "default"
-GOOGLE_CSE_API_KEY = (
-    os.environ.get("GOOGLE_CSE_API_KEY")
-    or os.environ.get("GOOGLE_CUSTOM_SEARCH_API_KEY")
-    or os.environ.get("GOOGLE_API_KEY")
+MERCADO_LIVRE_ACCESS_TOKEN = (
+    os.environ.get("MERCADO_LIVRE_ACCESS_TOKEN")
+    or os.environ.get("MELI_ACCESS_TOKEN")
     or ""
 ).strip()
-GOOGLE_CSE_ID = (
-    os.environ.get("GOOGLE_CSE_ID")
-    or os.environ.get("GOOGLE_CUSTOM_SEARCH_CX")
-    or os.environ.get("GOOGLE_CX")
-    or ""
-).strip()
-GOOGLE_CSE_URL = "https://www.googleapis.com/customsearch/v1"
+MERCADO_LIVRE_SEARCH_URL = "https://api.mercadolibre.com/sites/MLB/search"
+MARKETPLACE_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/126.0.0.0 Safari/537.36"
+)
 POSTGRES_SCHEMA_LOCK = threading.Lock()
 POSTGRES_SCHEMA_READY = False
 
@@ -113,16 +111,15 @@ ENTRY_EXCLUSION_TERMS = {
 }
 
 
-def google_cse_configured():
-    return bool(GOOGLE_CSE_API_KEY and GOOGLE_CSE_ID)
-
-
 def price_source_status():
     return [
-        {"name": "Google Custom Search API", "status": "active" if google_cse_configured() else "needs_credentials", "needsCredentials": True},
-        {"name": "Mercado Livre via Google", "status": "active" if google_cse_configured() else "waiting_google_cse", "needsCredentials": True},
-        {"name": "Amazon via Google", "status": "active" if google_cse_configured() else "waiting_google_cse", "needsCredentials": True},
-        {"name": "Shopee via Google", "status": "active" if google_cse_configured() else "waiting_google_cse", "needsCredentials": True},
+        {
+            "name": "Mercado Livre API",
+            "status": "active" if MERCADO_LIVRE_ACCESS_TOKEN else "best_effort_public",
+            "needsCredentials": not bool(MERCADO_LIVRE_ACCESS_TOKEN),
+        },
+        {"name": "Amazon busca publica", "status": "best_effort", "needsCredentials": False},
+        {"name": "Shopee busca publica", "status": "best_effort", "needsCredentials": False},
     ]
 
 
@@ -236,88 +233,163 @@ def price_search_keyword(product, position):
     return " ".join(dict.fromkeys(term for term in terms if term))
 
 
-def google_price_queries(product, position):
+def marketplace_price_queries(product, position):
     product = re.sub(r"\s+", " ", str(product or "")).strip()
-    keyword = price_search_keyword(product, position)
-    sites = " OR ".join(f"site:{domain}" for domain in PRICE_SEARCH_DOMAINS)
-    entry_hint = "basica entrada barato economica" if normalize_position(position) == "entrada" else ""
-    return [
-        f'{keyword} {entry_hint} "R$"'.strip(),
-        f"{product} preco mercado livre amazon shopee",
-        f"{keyword} ({sites})",
-        f"{product} Mercado Livre Amazon Shopee",
-    ]
+    queries = [product]
+    if normalize_position(position) == "entrada":
+        queries.extend([
+            f"{product} basica",
+            f"{product} entrada",
+            f"{product} barato",
+        ])
+    return list(dict.fromkeys(query for query in queries if query))
 
 
-def google_cse_request(query, timeout=20):
-    if not google_cse_configured():
-        raise RuntimeError("GOOGLE_CSE_API_KEY e GOOGLE_CSE_ID ainda nao foram configurados.")
-    params = {
-        "key": GOOGLE_CSE_API_KEY,
-        "cx": GOOGLE_CSE_ID,
-        "q": query,
-        "num": 10,
-        "gl": "br",
-        "cr": "countryBR",
-        "hl": "pt-BR",
-        "safe": "off",
-    }
+def marketplace_request(url, timeout=20):
     request = urllib.request.Request(
-        GOOGLE_CSE_URL + "?" + urlencode(params),
-        headers={"Accept": "application/json", "User-Agent": "PersonaPulseAI/1.0"},
+        url,
+        headers={
+            "Accept": "application/json,text/html;q=0.9,*/*;q=0.8",
+            "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.7",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+            "User-Agent": MARKETPLACE_USER_AGENT,
+        },
         method="GET",
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
-        return json.loads(response.read().decode("utf-8"))
+        content_type = response.headers.get("Content-Type", "")
+        body = response.read().decode("utf-8", errors="ignore")
+    if "application/json" in content_type:
+        return json.loads(body)
+    return body
 
 
-def price_candidates_from_google_item(item):
-    candidates = [item.get("title"), item.get("snippet"), item.get("htmlSnippet")]
-    pagemap = item.get("pagemap") or {}
-    for group_name in ("offer", "offers", "product", "metatags"):
-        for entry in pagemap.get(group_name) or []:
-            if not isinstance(entry, dict):
-                continue
-            for key, value in entry.items():
-                key = str(key).lower()
-                if "price" in key or "amount" in key or key in ("lowprice", "highprice"):
-                    candidates.append((value, True))
-    prices = []
-    seen = set()
-    for candidate in candidates:
-        allow_plain_integer = False
-        if isinstance(candidate, tuple):
-            candidate, allow_plain_integer = candidate
-        price = parse_brl_price(candidate, allow_plain_integer=allow_plain_integer)
-        if price is None or price in seen:
-            continue
-        seen.add(price)
-        prices.append(price)
-    return prices
+def mercado_livre_item(result):
+    price = parse_brl_price(result.get("price"), allow_plain_integer=True)
+    if price is None:
+        return None
+    title = html.unescape(result.get("title") or "Produto")
+    return {
+        "marketplace": "Mercado Livre",
+        "title": title,
+        "price": price,
+        "currency": result.get("currency_id") or "BRL",
+        "url": result.get("permalink") or "",
+        "domain": "mercadolivre.com.br",
+        "snippet": " ".join(str(result.get(key) or "") for key in ("condition", "official_store_name", "seller_address")),
+        "raw": result,
+    }
 
 
-def extract_google_price_items(payload, product, position):
+def search_mercado_livre_prices(product, position):
     items = []
-    for item in payload.get("items") or []:
-        if not source_allowed(item, position):
-            continue
-        if not item_matches_product(item, product, position):
-            continue
-        domain = source_domain(item)
-        title = html.unescape(item.get("title") or "Produto")
-        link = item.get("link") or ""
-        for price in price_candidates_from_google_item(item):
-            items.append({
-                "marketplace": source_label(item),
+    errors = []
+    for query in marketplace_price_queries(product, position):
+        params = {"q": query, "limit": 50}
+        url = MERCADO_LIVRE_SEARCH_URL + "?" + urlencode(params)
+        try:
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "Accept": "application/json",
+                    "Accept-Language": "pt-BR,pt;q=0.9",
+                    "User-Agent": MARKETPLACE_USER_AGENT,
+                    **({"Authorization": f"Bearer {MERCADO_LIVRE_ACCESS_TOKEN}"} if MERCADO_LIVRE_ACCESS_TOKEN else {}),
+                },
+                method="GET",
+            )
+            with urllib.request.urlopen(request, timeout=20) as response:
+                payload = json.loads(response.read().decode("utf-8", errors="ignore"))
+            for result in payload.get("results") or []:
+                item = mercado_livre_item(result)
+                if not item:
+                    continue
+                if item_matches_product(item, product, position):
+                    items.append(item)
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            errors.append({"source": "Mercado Livre API", "error": str(exc), "query": query})
+    return dedupe_price_items(items), errors
+
+
+def html_search_blocks(page, marker):
+    parts = page.split(marker)
+    return [marker + part for part in parts[1:]]
+
+
+def strip_tags(value):
+    value = re.sub(r"<script\b[^>]*>.*?</script>", " ", value, flags=re.I | re.S)
+    value = re.sub(r"<style\b[^>]*>.*?</style>", " ", value, flags=re.I | re.S)
+    value = re.sub(r"<[^>]+>", " ", value)
+    return re.sub(r"\s+", " ", html.unescape(value)).strip()
+
+
+def search_amazon_prices(product, position):
+    items = []
+    errors = []
+    query = marketplace_price_queries(product, position)[0]
+    url = "https://www.amazon.com.br/s?" + urlencode({"k": query})
+    try:
+        page = marketplace_request(url)
+        blocks = html_search_blocks(page, 'data-component-type="s-search-result"')[:20]
+        for block in blocks:
+            title_match = re.search(r'<h2[^>]*>.*?<span[^>]*>(.*?)</span>.*?</h2>', block, flags=re.I | re.S)
+            whole_match = re.search(r'<span class="a-price-whole">([^<]+)</span>', block, flags=re.I)
+            frac_match = re.search(r'<span class="a-price-fraction">([^<]+)</span>', block, flags=re.I)
+            link_match = re.search(r'<a[^>]+class="[^"]*a-link-normal[^"]*"[^>]+href="([^"]+)"', block, flags=re.I)
+            if not (title_match and whole_match):
+                continue
+            title = strip_tags(title_match.group(1))
+            raw_price = whole_match.group(1)
+            if frac_match:
+                raw_price = f"{raw_price},{frac_match.group(1)}"
+            price = parse_brl_price(raw_price)
+            if price is None:
+                continue
+            path = html.unescape(link_match.group(1)) if link_match else ""
+            item = {
+                "marketplace": "Amazon",
                 "title": title,
                 "price": price,
                 "currency": "BRL",
-                "url": link,
-                "domain": domain,
-                "snippet": html.unescape(item.get("snippet") or ""),
-                "raw": item,
-            })
-    return items
+                "url": "https://www.amazon.com.br" + path if path.startswith("/") else path,
+                "domain": "amazon.com.br",
+                "snippet": strip_tags(block[:1000]),
+                "raw": {},
+            }
+            if item_matches_product(item, product, position):
+                items.append(item)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+        errors.append({"source": "Amazon busca publica", "error": str(exc), "query": query})
+    return dedupe_price_items(items), errors
+
+
+def search_shopee_prices(product, position):
+    items = []
+    errors = []
+    query = marketplace_price_queries(product, position)[0]
+    url = "https://shopee.com.br/search?" + urlencode({"keyword": query})
+    try:
+        page = marketplace_request(url)
+        for match in re.finditer(r'"name"\s*:\s*"([^"]{8,180})".{0,800}?"price"\s*:\s*(\d+)', page, flags=re.I | re.S):
+            title = html.unescape(match.group(1)).encode("utf-8").decode("unicode_escape", errors="ignore")
+            raw_price = float(match.group(2))
+            price = raw_price / 100000 if raw_price > 1000000 else raw_price
+            item = {
+                "marketplace": "Shopee",
+                "title": title,
+                "price": round(price, 2),
+                "currency": "BRL",
+                "url": url,
+                "domain": "shopee.com.br",
+                "snippet": title,
+                "raw": {},
+            }
+            if item_matches_product(item, product, position):
+                items.append(item)
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as exc:
+        errors.append({"source": "Shopee busca publica", "error": str(exc), "query": query})
+    return dedupe_price_items(items), errors
 
 
 def dedupe_price_items(items):
@@ -332,15 +404,13 @@ def dedupe_price_items(items):
     return deduped
 
 
-def search_google_prices(product, position):
+def search_marketplace_prices(product, position):
     items = []
     errors = []
-    for query in google_price_queries(product, position):
-        try:
-            payload = google_cse_request(query)
-            items.extend(extract_google_price_items(payload, product, position))
-        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError, RuntimeError) as exc:
-            errors.append({"source": "Google Custom Search API", "error": str(exc), "query": query})
+    for search_fn in (search_mercado_livre_prices, search_amazon_prices, search_shopee_prices):
+        found, source_errors = search_fn(product, position)
+        items.extend(found)
+        errors.extend(source_errors)
     return dedupe_price_items(items), errors
 
 
@@ -372,7 +442,7 @@ def price_bucket(prices, low_percentile, high_percentile, min_items=1):
 
 
 def price_buckets(prices):
-    basic_min_items = min(3, len(prices))
+    basic_min_items = min(2, len(prices))
     return {
         "basico": price_bucket(prices, 0.00, 0.40, min_items=basic_min_items),
         "intermediario": price_bucket(prices, 0.25, 0.70, min_items=min(2, len(prices))),
@@ -399,7 +469,7 @@ def build_pricing_result(product, position, items, source, errors=None):
         return insufficient_pricing_result(
             product,
             position,
-            (errors or []) + [{"source": source, "error": "Menos de 3 precos confiaveis foram encontrados no Google."}],
+            (errors or []) + [{"source": source, "error": "Menos de 3 precos confiaveis foram encontrados nos marketplaces permitidos."}],
             observed_items=len(prices),
         )
     buckets = price_buckets(prices)
@@ -413,7 +483,7 @@ def build_pricing_result(product, position, items, source, errors=None):
         "sourceStatus": price_source_status(),
         "ticketMedio": target,
         "priceSuggestions": [
-            {"label": "Basico", "value": buckets["basico"]["avg"], "reason": f"Faixa de entrada observada no Google: R$ {buckets['basico']['low']} a R$ {buckets['basico']['high']}."},
+            {"label": "Basico", "value": buckets["basico"]["avg"], "reason": f"Faixa de entrada observada nos marketplaces: R$ {buckets['basico']['low']} a R$ {buckets['basico']['high']}."},
             {"label": "Intermediario", "value": buckets["intermediario"]["avg"], "reason": f"Faixa central de mercado: R$ {buckets['intermediario']['low']} a R$ {buckets['intermediario']['high']}."},
             {"label": "Premium", "value": buckets["premium"]["avg"], "reason": f"Faixa superior com maior valor percebido: R$ {buckets['premium']['low']} a R$ {buckets['premium']['high']}."},
             {"label": "Alto custo", "value": buckets["alto_custo"]["avg"], "reason": f"Topo da distribuicao encontrada: R$ {buckets['alto_custo']['low']} a R$ {buckets['alto_custo']['high']}."},
@@ -421,7 +491,7 @@ def build_pricing_result(product, position, items, source, errors=None):
         "range": {"low": round(min(prices)), "high": round(max(prices))},
         "priceBuckets": buckets,
         "attrs": [
-            "precos encontrados pelo Google",
+            "precos encontrados em marketplaces permitidos",
             "fontes limitadas a Mercado Livre, Amazon e Shopee",
             "resultados incompatíveis com o produto foram descartados",
             "outliers removidos antes do calculo",
@@ -441,16 +511,16 @@ def build_pricing_result(product, position, items, source, errors=None):
     }
 
 
-def google_pricing(product, position):
-    items, errors = search_google_prices(product, position)
+def marketplace_pricing(product, position):
+    items, errors = search_marketplace_prices(product, position)
     if not items:
-        errors.append({"source": "Google Custom Search API", "error": "Nenhum preco foi encontrado em marketplaces pelo Google."})
+        errors.append({"source": "Marketplaces permitidos", "error": "Nenhum preco foi encontrado em Mercado Livre, Amazon ou Shopee."})
         return None, errors
     return build_pricing_result(
         product,
         position,
         items,
-        "Google Custom Search API",
+        "Mercado Livre + Amazon + Shopee",
         errors,
     ), errors
 
@@ -461,11 +531,11 @@ def insufficient_pricing_result(product, position, errors, observed_items=0):
         "created_at": now_iso(),
         "product": product,
         "position": position,
-        "source": "Google Custom Search API. Dados insuficientes para calcular ticket medio confiavel.",
+        "source": "Mercado Livre + Amazon + Shopee. Dados insuficientes para calcular ticket medio confiavel.",
         "sourceStatus": price_source_status(),
         "ticketMedio": 0,
         "priceSuggestions": [
-            {"label": "Basico", "value": 0, "reason": "Aguardando pelo menos 3 precos reais observados no Google."},
+            {"label": "Basico", "value": 0, "reason": "Aguardando pelo menos 3 precos reais observados nos marketplaces permitidos."},
             {"label": "Intermediario", "value": 0, "reason": "Sem calculo automatico para evitar ticket medio falso."},
             {"label": "Premium", "value": 0, "reason": "Informe produto, marca e modelo para melhorar a busca."},
             {"label": "Alto custo", "value": 0, "reason": "Sem referencias suficientes para topo de mercado."},
@@ -489,9 +559,9 @@ def insufficient_pricing_result(product, position, errors, observed_items=0):
 
 
 def pricing_reference(product, position):
-    google_result, errors = google_pricing(product, position)
-    if google_result:
-        return google_result
+    marketplace_result, errors = marketplace_pricing(product, position)
+    if marketplace_result:
+        return marketplace_result
     return insufficient_pricing_result(product, position, errors)
 
 
