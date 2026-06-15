@@ -35,8 +35,32 @@ http://127.0.0.1:8088/docs
 - `GET /api/segments`
 - `GET /api/campaigns`
 - `POST /api/campaigns/generate`
+- `GET /api/price-research?product={produto}&position={entrada|intermediario|premium|alto_custo}`
 - `GET /api/recommendations`
 - `POST /api/crm/recommendations/push`
+
+### Pesquisa de precos
+
+O endpoint de pesquisa de precos usa somente fontes permitidas:
+
+- Mercado Livre
+- Amazon Brasil
+- Shopee Brasil
+
+Nao usar Buscape, DataForSEO ou Google Custom Search JSON API para calcular ticket medio.
+
+Regras atuais:
+
+- o ticket medio so e calculado quando houver pelo menos 3 precos reais confiaveis;
+- itens incompativeis com o produto sao descartados;
+- para posicionamento `entrada`, termos de alto custo como `carbon`, `elite`, `slx`, `rockshox`, `full suspension` e similares sao filtrados;
+- quando as fontes bloqueiam consulta automatica, a API retorna `ticketMedio: 0` e lista o erro da fonte, sem inventar preco.
+
+Em producao, o Mercado Livre pode exigir acesso server-to-server. Quando houver token oficial, configure:
+
+```text
+MERCADO_LIVRE_ACCESS_TOKEN=<token>
+```
 
 ### Meta Ads
 
@@ -85,6 +109,18 @@ Esta versao usa PostgreSQL como persistencia oficial.
 
 - Configure `DATABASE_URL` em producao.
 - Sem `DATABASE_URL`, a API retorna erro de configuracao e nao grava dados.
+
+Na VPS atual, o servico systemd usa `/opt/personapulse/start.sh`, que deve apontar para:
+
+```text
+DATABASE_URL=postgresql://personapulse_user:<senha>@127.0.0.1:5433/personapulse_ai
+```
+
+O script tambem deve iniciar a API pela virtualenv:
+
+```text
+/opt/personapulse/APIS/personapulse-api/.venv/bin/python server.py
+```
 
 Schema SQL:
 

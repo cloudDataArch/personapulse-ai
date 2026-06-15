@@ -61,6 +61,7 @@ flowchart LR
 - `GET /api/segments`
 - `GET /api/campaigns`
 - `POST /api/campaigns/generate`
+- `GET /api/price-research?product={produto}&position={entrada|intermediario|premium|alto_custo}`
 - `GET /api/recommendations`
 - `POST /api/crm/recommendations/push`
 
@@ -103,6 +104,34 @@ Quando o Power BI mostrar campos do tipo `List` ou `Record`, expandir a lista co
 - `sources` para fontes
 
 O endpoint `executive-summary` deve manter schema estavel, mesmo sem dados, para evitar quebra de colunas no Power BI.
+
+## Pesquisa de precos e ticket medio
+
+A pesquisa de precos deve usar apenas marketplaces permitidos:
+
+- Mercado Livre
+- Amazon Brasil
+- Shopee Brasil
+
+Fontes removidas/bloqueadas para esse fluxo:
+
+- Buscape
+- DataForSEO
+- Google Custom Search JSON API
+
+O backend nao deve inventar ticket medio. Se menos de 3 precos reais confiaveis forem encontrados, o endpoint retorna `ticketMedio: 0`, `observedItems: 0` ou a quantidade real observada, e descreve os erros por fonte.
+
+Para produtos de entrada, o filtro deve evitar que ofertas premium contaminem o ticket basico. Exemplo: uma busca por bicicleta Caloi aro 29 adulta basica nao deve usar modelos `Elite Carbon`, `SLX`, `RockShox`, `full suspension` ou similares para sugerir ticket medio.
+
+O status esperado quando marketplaces bloqueiam consulta automatica e:
+
+```text
+Mercado Livre API: best_effort_public ou active com token oficial
+Amazon busca publica: best_effort
+Shopee busca publica: best_effort
+```
+
+Quando houver credencial oficial do Mercado Livre, configurar `MERCADO_LIVRE_ACCESS_TOKEN` no ambiente do backend.
 
 ## Persistencia atual
 
@@ -149,6 +178,26 @@ Abrir:
 ```text
 http://127.0.0.1:8088/docs
 ```
+
+## Producao VPS
+
+Na VPS, o servico systemd `personapulse` usa `/opt/personapulse/start.sh`.
+
+Configuracao operacional validada:
+
+```bash
+export HOST="0.0.0.0"
+export PORT="8088"
+export DATABASE_URL="postgresql://personapulse_user:<senha>@127.0.0.1:5433/personapulse_ai"
+exec /opt/personapulse/APIS/personapulse-api/.venv/bin/python server.py
+```
+
+Observacoes:
+
+- o PostgreSQL local validado roda em `127.0.0.1:5433`;
+- a porta `5432` pode estar ocupada por `docker-proxy` e nao deve ser assumida como banco correto;
+- a API deve rodar pela `.venv`, pois o Python global pode nao ter `psycopg[binary]`;
+- antes de reiniciar, processos antigos presos na porta `8088` podem ser removidos com `fuser -k 8088/tcp`.
 
 ## Deploy
 
