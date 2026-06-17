@@ -2037,8 +2037,106 @@ def generate_campaign(payload):
             f"A campanha deve vender desejo, confiança e urgência, conduzindo o cliente a {objective}."
         ),
         "cta": "Conhecer a oferta",
+        "status": "rascunho",
+        "source": "personapulse",
         "created_at": now_iso(),
+        "updated_at": now_iso(),
     }
+
+
+CAMPAIGN_STATUSES = {
+    "rascunho",
+    "em_revisao",
+    "aprovada",
+    "ativa",
+    "pausada",
+    "finalizada",
+    "arquivada",
+}
+
+
+def normalize_campaign_status(status):
+    normalized = normalize_text(status or "rascunho").replace(" ", "_").replace("-", "_")
+    aliases = {
+        "draft": "rascunho",
+        "revisao": "em_revisao",
+        "review": "em_revisao",
+        "approved": "aprovada",
+        "aprovado": "aprovada",
+        "active": "ativa",
+        "ativo": "ativa",
+        "paused": "pausada",
+        "pausado": "pausada",
+        "done": "finalizada",
+        "finished": "finalizada",
+        "archived": "arquivada",
+    }
+    normalized = aliases.get(normalized, normalized)
+    return normalized if normalized in CAMPAIGN_STATUSES else "rascunho"
+
+
+def campaign_status_label(status):
+    labels = {
+        "rascunho": "Rascunho",
+        "em_revisao": "Em revisao",
+        "aprovada": "Aprovada",
+        "ativa": "Ativa",
+        "pausada": "Pausada",
+        "finalizada": "Finalizada",
+        "arquivada": "Arquivada",
+    }
+    return labels.get(status, "Rascunho")
+
+
+def normalize_campaign_record(payload, existing=None):
+    existing = existing or {}
+    status = normalize_campaign_status(payload.get("status") or existing.get("status"))
+    campaign_id = payload.get("id") or payload.get("campaign_id") or existing.get("id") or str(uuid.uuid4())
+    name = (
+        payload.get("name")
+        or payload.get("title")
+        or existing.get("name")
+        or existing.get("title")
+        or "Campanha sem nome"
+    )
+    record = {
+        **existing,
+        **payload,
+        "id": campaign_id,
+        "campaign_id": campaign_id,
+        "name": name,
+        "title": payload.get("title") or existing.get("title") or name,
+        "segment": payload.get("segment") or payload.get("segment_name") or existing.get("segment") or "Publico definido",
+        "channel": payload.get("channel") or existing.get("channel") or "Canal definido",
+        "product_name": payload.get("product_name") or existing.get("product_name") or "",
+        "tone": payload.get("tone") or existing.get("tone") or "",
+        "objective": payload.get("objective") or existing.get("objective") or "",
+        "body": payload.get("body") or payload.get("creative_text") or existing.get("body") or existing.get("creative_text") or "",
+        "creative_text": payload.get("creative_text") or payload.get("body") or existing.get("creative_text") or existing.get("body") or "",
+        "status": status,
+        "status_label": campaign_status_label(status),
+        "source": payload.get("source") or existing.get("source") or "personapulse",
+        "owner": payload.get("owner") or existing.get("owner") or "",
+        "start_date": payload.get("start_date") or existing.get("start_date") or "",
+        "end_date": payload.get("end_date") or existing.get("end_date") or "",
+        "updated_at": now_iso(),
+    }
+    record["active"] = status == "ativa"
+    record["created_at"] = existing.get("created_at") or payload.get("created_at") or now_iso()
+    return record
+
+
+def upsert_campaign(store, payload):
+    campaign_id = payload.get("id") or payload.get("campaign_id")
+    existing = None
+    if campaign_id:
+        existing = next((item for item in store["campaigns"] if item.get("id") == campaign_id or item.get("campaign_id") == campaign_id), None)
+    campaign = normalize_campaign_record(payload, existing)
+    if existing:
+        existing.update(campaign)
+        return "updated", existing
+    store["campaigns"].insert(0, campaign)
+    return "created", campaign
 
 
 def upsert_by_id(items, payload, id_key):
@@ -2872,9 +2970,35 @@ class Handler(BaseHTTPRequestHandler):
                     "resync": result,
                 })
 
+            if path == "/api/campaigns":
+                status, campaign = upsert_campaign(store, payload)
+                add_audit(store, "campaign_upsert", {
+                    "campaign_id": campaign.get("id"),
+                    "status": status,
+                    "workflow_status": campaign.get("status"),
+                })
+                save_store(store)
+                return self.send_json(200 if status == "updated" else 201, {"status": status, "campaign": campaign})
+
+            if path.startswith("/api/campaigns/") and path.endswith("/status"):
+                parts = path.strip("/").split("/")
+                if len(parts) != 4:
+                    return self.send_json(404, {"error": "not_found"})
+                campaign_id = parts[2]
+                existing = next((item for item in store["campaigns"] if item.get("id") == campaign_id or item.get("campaign_id") == campaign_id), None)
+                if not existing:
+                    return self.send_json(404, {"error": "campaign_not_found", "campaign_id": campaign_id})
+                status, campaign = upsert_campaign(store, {**existing, "id": campaign_id, "status": payload.get("status")})
+                add_audit(store, "campaign_status_changed", {
+                    "campaign_id": campaign.get("id"),
+                    "workflow_status": campaign.get("status"),
+                })
+                save_store(store)
+                return self.send_json(200, {"status": status, "campaign": campaign})
+
             if path == "/api/campaigns/generate":
                 campaign = generate_campaign(payload)
-                store["campaigns"].insert(0, campaign)
+                _, campaign = upsert_campaign(store, campaign)
                 recommendation = {
                     "id": str(uuid.uuid4()),
                     "type": "campaign",

@@ -1460,6 +1460,7 @@
                 <span>Ideia criativa pronta para campanha</span>
               </div>
               <div class="actions">
+                <button class="btn primary" id="saveGeneratedCampaign">Salvar campanha</button>
                 <button class="btn" id="regenerateCampaignText">Nova variação</button>
                 <span class="tag green">Editável</span>
               </div>
@@ -1733,71 +1734,9 @@
       return `${apiBaseUrl()}/api/oauth/callback`;
     }
 
-    let campaignPerformance = [
-      {
-        id: "premium",
-        name: "Lançamento premium",
-        segment: "Clientes premium",
-        channel: "E-mail",
-        audience: 1240,
-        clicks: 318,
-        conversions: 86,
-        revenue: 42800,
-        cost: 4100,
-        status: "Alta margem",
-      },
-      {
-        id: "cart",
-        name: "Recuperação de carrinho",
-        segment: "Abandono de carrinho",
-        channel: "WhatsApp",
-        audience: 842,
-        clicks: 276,
-        conversions: 64,
-        revenue: 28160,
-        cost: 2200,
-        status: "Urgente",
-      },
-      {
-        id: "repeat",
-        name: "Recompra com kit",
-        segment: "Recompra provavel",
-        channel: "E-mail",
-        audience: 2105,
-        clicks: 402,
-        conversions: 93,
-        revenue: 36540,
-        cost: 3600,
-        status: "Teste A/B",
-      },
-      {
-        id: "discount",
-        name: "Cupom limitado",
-        segment: "Sensiveis a desconto",
-        channel: "Meta Ads",
-        audience: 3410,
-        clicks: 711,
-        conversions: 118,
-        revenue: 31270,
-        cost: 7400,
-        status: "Volume",
-      },
-    ];
+    let campaignPerformance = [];
 
-    let campaignSchedule = [
-      ["Lançamento premium", "E-mail", "03/06/2026", "Pronta"],
-      ["Recuperação de carrinho", "WhatsApp", "03/06/2026", "Pronta"],
-      ["Recompra com kit", "E-mail", "04/06/2026", "Revisao"],
-      ["Cupom limitado", "Meta Ads", "04/06/2026", "Pronta"],
-      ["Dia dos Pais - teaser", "Google Ads", "06/06/2026", "Planejada"],
-      ["Clientes inativos", "E-mail", "07/06/2026", "Planejada"],
-      ["Oferta premium", "WhatsApp", "08/06/2026", "Planejada"],
-      ["SEO produto foco", "SEO", "09/06/2026", "Rascunho"],
-      ["Lookalike premium", "Meta Ads", "10/06/2026", "Rascunho"],
-      ["Carrinho 72h", "WhatsApp", "11/06/2026", "Planejada"],
-      ["Remarketing Google", "Google Ads", "12/06/2026", "Planejada"],
-      ["Newsletter curadoria", "E-mail", "13/06/2026", "Planejada"],
-    ];
+    let campaignSchedule = [];
 
     let segments = [
       { name: "Clientes premium", customers: "1.240", score: 88, action: "Campanha de lancamento exclusivo", tag: "teal" },
@@ -1990,6 +1929,124 @@
     function conversionRate(conversions, audience) {
       if (!audience) return 0;
       return Math.round((conversions / audience) * 1000) / 10;
+    }
+
+    function campaignStatusLabel(status) {
+      const labels = {
+        rascunho: "Rascunho",
+        em_revisao: "Em revisão",
+        aprovada: "Aprovada",
+        ativa: "Ativa",
+        pausada: "Pausada",
+        finalizada: "Finalizada",
+        arquivada: "Arquivada",
+      };
+      return labels[status] || status || "Rascunho";
+    }
+
+    function apiCampaignToPerformance(campaign) {
+      const status = campaign.status || "rascunho";
+      return {
+        id: campaign.id || campaign.campaign_id,
+        name: campaign.name || campaign.title || "Campanha sem nome",
+        segment: campaign.segment || "Público definido",
+        channel: campaign.channel || "Canal definido",
+        audience: Number(campaign.audience || campaign.customers || 0),
+        clicks: Number(campaign.clicks || 0),
+        conversions: Number(campaign.conversions || 0),
+        revenue: Number(campaign.revenue || campaign.purchase_value || 0),
+        cost: Number(campaign.cost || campaign.spend || 0),
+        status: campaignStatusLabel(status),
+        workflowStatus: status,
+        active: status === "ativa",
+        productName: campaign.product_name || "",
+        creativeText: campaign.creative_text || campaign.body || "",
+        startDate: campaign.start_date || "",
+        endDate: campaign.end_date || "",
+        source: campaign.source || "personapulse",
+      };
+    }
+
+    function rebuildCampaignScheduleFromPerformance() {
+      campaignSchedule = campaignPerformance.map(campaign => [
+        campaign.name,
+        campaign.channel,
+        campaign.startDate ? formatDateBR(campaign.startDate) : "-",
+        campaign.status,
+      ]);
+    }
+
+    async function loadSavedCampaigns() {
+      try {
+        const payload = await fetchJsonWithTimeout(apiUrl("/api/campaigns"), {}, 20000);
+        const saved = (payload.campaigns || []).map(apiCampaignToPerformance);
+        campaignPerformance = saved;
+        rebuildCampaignScheduleFromPerformance();
+        renderCampaignPerformance("general");
+        renderActiveCampaignCenter();
+        renderCampaignSchedule();
+      } catch (error) {
+        const notice = document.getElementById("csvNotice");
+        notice.querySelector("span").innerHTML = `<strong>Campanhas indisponíveis.</strong> Não foi possível carregar o pipeline salvo agora.`;
+        notice.classList.add("visible");
+      }
+    }
+
+    async function saveGeneratedCampaign() {
+      const notice = document.getElementById("csvNotice");
+      const segment = document.getElementById("campaignSegment").value || "Público definido pelo usuário";
+      const channel = document.getElementById("campaignChannel").value || "Canal definido pelo usuário";
+      const product = document.getElementById("campaignProduct").value || "Produto definido pelo usuário";
+      const tone = document.getElementById("campaignTone").value || "Tom definido pelo usuário";
+      const creativeText = document.getElementById("campaignOutput").textContent.trim();
+      if (!creativeText) {
+        notice.querySelector("span").innerHTML = `<strong>Gere uma campanha antes de salvar.</strong> O texto criativo ainda está vazio.`;
+        notice.classList.add("visible");
+        return;
+      }
+      try {
+        const payload = await fetchJsonWithTimeout(apiUrl("/api/campaigns"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: `${product} - ${channel}`,
+            title: `${product} - ${channel}`,
+            segment,
+            channel,
+            product_name: product,
+            tone,
+            objective: "converter interessados em compradores",
+            creative_text: creativeText,
+            body: creativeText,
+            status: "rascunho",
+          }),
+        }, 30000);
+        const saved = apiCampaignToPerformance(payload.campaign);
+        campaignPerformance = [saved, ...campaignPerformance.filter(campaign => campaign.id !== saved.id)];
+        rebuildCampaignScheduleFromPerformance();
+        audit.unshift(["Campanha salva", `${saved.name} entrou no pipeline como ${saved.status}.`]);
+        renderCampaignPerformance("general");
+        renderActiveCampaignCenter();
+        renderCampaignSchedule();
+        notice.querySelector("span").innerHTML = `<strong>Campanha salva.</strong> ${saved.name} entrou no pipeline como rascunho.`;
+        notice.classList.add("visible");
+        activateTab("activeCampaigns");
+      } catch (error) {
+        notice.querySelector("span").innerHTML = `<strong>Campanha não salva.</strong> Verifique a conexão da API e tente novamente.`;
+        notice.classList.add("visible");
+      }
+    }
+
+    async function updateCampaignWorkflowStatus(campaign, nextStatus) {
+      const payload = await fetchJsonWithTimeout(apiUrl(`/api/campaigns/${campaign.id}/status`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      }, 20000);
+      const updated = apiCampaignToPerformance(payload.campaign);
+      campaignPerformance = campaignPerformance.map(item => item.id === updated.id ? updated : item);
+      rebuildCampaignScheduleFromPerformance();
+      return updated;
     }
 
     function renderCampaignPerformance(selectedId = selectedCampaignId) {
@@ -2220,15 +2277,25 @@
         `;
       }).join("");
       document.querySelectorAll("[data-toggle-campaign]").forEach(button => {
-        button.addEventListener("click", event => {
+        button.addEventListener("click", async event => {
           event.stopPropagation();
           const campaign = campaignPerformance.find(item => item.id === button.dataset.toggleCampaign);
           if (!campaign) return;
-          campaign.active = !isCampaignActive(campaign);
-          if (campaign.active) {
-            activeCampaignDetailId = campaign.id;
-          } else if (activeCampaignDetailId === campaign.id) {
-            activeCampaignDetailId = null;
+          const nextStatus = isCampaignActive(campaign) ? "pausada" : "ativa";
+          button.disabled = true;
+          try {
+            const updated = await updateCampaignWorkflowStatus(campaign, nextStatus);
+            if (updated.active) {
+              activeCampaignDetailId = updated.id;
+            } else if (activeCampaignDetailId === updated.id) {
+              activeCampaignDetailId = null;
+            }
+          } catch (error) {
+            const notice = document.getElementById("csvNotice");
+            notice.querySelector("span").innerHTML = `<strong>Status não salvo.</strong> Tente novamente quando a API estiver disponível.`;
+            notice.classList.add("visible");
+          } finally {
+            button.disabled = false;
           }
           renderActiveCampaignCenter();
           renderCampaignPerformance("general");
@@ -3616,6 +3683,9 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
     document.getElementById("showCampaignGeneral").addEventListener("click", () => {
       renderCampaignPerformance("general");
     });
+    document.getElementById("saveGeneratedCampaign").addEventListener("click", () => {
+      saveGeneratedCampaign();
+    });
     document.getElementById("activeCampaignGeneral").addEventListener("click", () => {
       activeCampaignDetailId = null;
       renderActiveCampaignCenter();
@@ -3782,6 +3852,7 @@ Uma campanha feita para transformar desejo em clique, clique em visita e visita 
     renderIntegrations();
     generateCampaign();
     refreshSystemStatus();
+    loadSavedCampaigns();
     activateTab("dashboard", { keepAiPanel: true });
   </script>
   <script>

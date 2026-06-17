@@ -39,6 +39,8 @@ Clientes sao gravados com deduplicacao por `source + external_id`, e-mail normal
 
 - `GET /api/segments`
 - `GET /api/campaigns`
+- `POST /api/campaigns`
+- `POST /api/campaigns/{id}/status`
 - `POST /api/campaigns/generate`
 - `GET /api/recommendations`
 - `POST /api/crm/recommendations/push`

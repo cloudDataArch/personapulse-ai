@@ -366,6 +366,13 @@ Status inicial:
 - RQ-005 Calendario de campanhas.
 - RQ-006 Aprovacao.
 
+Status inicial:
+
+- campanha gerada pode ser salva como objeto persistido;
+- pipeline inicial grava status e permite ativar/pausar campanha pela API;
+- campanhas fake foram removidas do carregamento inicial;
+- proximas entregas devem adicionar revisao/aprovacao com comentarios, calendario mensal e responsavel por campanha.
+
 ### Sprint 3 - IA acionavel
 
 - RQ-007 Central de recomendacoes.

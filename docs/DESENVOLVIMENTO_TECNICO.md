@@ -61,6 +61,8 @@ flowchart LR
 
 - `GET /api/segments`
 - `GET /api/campaigns`
+- `POST /api/campaigns`
+- `POST /api/campaigns/{id}/status`
 - `POST /api/campaigns/generate`
 - `GET /api/recommendations`
 - `POST /api/crm/recommendations/push`
@@ -104,6 +106,17 @@ Primeira entrega da Sprint 1:
 - status de fonte separado por CSV, CRM, Meta Ads, Google Ads, Outros Ads e Power BI;
 - ressincronizacao operacional do modelo relacional a partir do `app_store`;
 - ajustes de texto para reduzir promessa de recurso simulado na experiencia principal.
+
+## Sprint 2 - campanhas de verdade
+
+Primeira entrega da Sprint 2:
+
+- campanhas salvas como objetos persistidos no PostgreSQL;
+- status de ciclo de vida: rascunho, em revisao, aprovada, ativa, pausada, finalizada e arquivada;
+- endpoint `POST /api/campaigns` para criar ou atualizar campanha;
+- endpoint `POST /api/campaigns/{id}/status` para alterar status do fluxo;
+- frontend sem campanhas fake no carregamento inicial;
+- botao "Salvar campanha" no gerador, enviando a campanha para o pipeline real.
 
 ## Integracao Power BI
 
